@@ -64,7 +64,7 @@ main =
     freeGLContext c
     W.freeWindow w
 
-  where game = until . (level &&& (sdlOnEvent _Quit <&& onKey Pressed SdlkEscape))
+  where game = until . (level &&& (sdlOnEvent _Quit <!> onKey Pressed SdlkEscape))
         level = keys [(SdlkA, -0.2), (SdlkD, 0.2)] 0 &&& keys [(SdlkS, -0.2), (SdlkW, 0.2)] 0
         keys k l = integral 0 . keys' k l
           where keys' [] l = pure l
