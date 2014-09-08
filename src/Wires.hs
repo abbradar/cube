@@ -6,11 +6,8 @@
 import FRP.Netwire
 import Prelude hiding ((.), id, until)
 import Control.Monad.Logger (logWarn)
-import Control.Wire.Core (Wire (..))
 import Graphics.Rendering.OpenGL.GL
 import Control.Monad.Base (liftBase)
-import Debug.Trace
-import Control.Wire
 
 import Graphics.UI.SDL.Monad
 import Graphics.UI.SDL.Video.Monad
@@ -24,9 +21,7 @@ import Graphics.UI.SDL.Utils.Framerate
 import Graphics.UI.SDL.Video.OpenGL
 import FRP.Netwire.Extra
 import FRP.Netwire.SDL
-import FRP.Netwire.SDL.State
 import FRP.Netwire.SDL.Wires
-import FRP.Netwire.SDL.Types
 
 main :: IO ()
 main =
@@ -66,6 +61,6 @@ main =
 
   where game = until . (level &&& (sdlOnEvent _Quit <!> onKey Pressed SdlkEscape))
         level = keys [(SdlkA, -0.2), (SdlkD, 0.2)] 0 &&& keys [(SdlkS, -0.2), (SdlkW, 0.2)] 0
-        keys k l = integral 0 . keys' k l
+        keys k' l' = integral 0 . keys' k' l'
           where keys' [] l = pure l
                 keys' ((k, v):t) l = (pure v . whileKey Pressed k <|> 0) + keys' t l
