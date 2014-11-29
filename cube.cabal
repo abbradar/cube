@@ -5,8 +5,7 @@ name:                cube
 version:             0.1.0.0
 -- synopsis:            
 -- description:         
--- license:             
-license-file:        LICENSE
+license:             BSD3
 author:              Nikolay Amiantov
 maintainer:          nikoamia@gmail.com
 -- copyright:           
@@ -17,47 +16,40 @@ cabal-version:       >=1.10
 
 executable triangle
   main-is:             Triangle.hs
-  -- other-modules:       
-  -- other-extensions:    
-  build-depends:       base >=4.7 && <4.8,
-                       MySDL,
-                       vector,
-                       transformers-base,
-                       transformers,
-                       monad-logger,
-                       template-haskell,
-                       OpenGL,
-                       monad-loops,
-                       text
+  default-extensions:  OverloadedStrings
+                     , ScopedTypeVariables
+  build-depends:       base >=4.7 && <4.8
+                     , MySDL
+                     , caramia
+                     , vector
+                     , transformers
+                     , monad-loops
+                     , interpolatedstring-perl6
   hs-source-dirs:      src
+  ghc-options:         -Wall -threaded
   default-language:    Haskell2010
 
 executable wires
   main-is:             Wires.hs
-  -- other-modules:       
-  -- other-extensions:    
-  build-depends:       base >=4.7 && <4.8,
-                       MySDL,
-                       OpenGL,
-                       transformers-base,
-                       transformers,
-                       monad-logger,
-                       netwire
+  default-extensions:  OverloadedStrings
+  build-depends:       base >=4.7 && <4.8
+                     , MySDL
+                     , OpenGL
+                     , transformers
+                     , netwire
   hs-source-dirs:      src
+  ghc-options:         -Wall
   default-language:    Haskell2010
 
 executable events
   main-is:             Events.hs
-  -- other-modules:       
-  -- other-extensions:    
-  build-depends:       base >=4.7 && <4.8,
-                       MySDL,
-                       OpenGL,
-                       transformers-base,
-                       transformers,
-                       monad-logger,
-                       text,
-                       text-format,
-                       netwire
+  default-extensions:  OverloadedStrings
+                     , NamedFieldPuns
+                     , ViewPatterns
+  build-depends:       base >=4.7 && <4.8
+                     , MySDL
+                     , transformers
+                     , netwire
   hs-source-dirs:      src
+  ghc-options:         -Wall
   default-language:    Haskell2010

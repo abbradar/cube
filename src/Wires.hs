@@ -1,15 +1,10 @@
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE ViewPatterns #-}
-{-# LANGUAGE NamedFieldPuns #-}
-
 import FRP.Netwire
 import Prelude hiding ((.), id, until)
-import Control.Monad.Logger (logWarn)
 import Graphics.Rendering.OpenGL.GL
-import Control.Monad.Base (liftBase)
+import Control.Monad.IO.Class (liftIO)
 
 import Graphics.UI.SDL.Monad
+import Graphics.UI.SDL.Types
 import Graphics.UI.SDL.Video.Monad
 import Graphics.UI.SDL.Video.Keyboard
 import Graphics.UI.SDL.Video.Keyboard.Types
@@ -26,21 +21,19 @@ import FRP.Netwire.SDL.Wires
 main :: IO ()
 main =
   withSDL $ withSDLEvents $ withSDLTimer $ withSDLVideo $ do
-    $(logWarn) "hajimemashou2"
-
-    (Right w) <- W.createWindow "A Window" (Vector2 W.Undefined W.Undefined) (Vector2 640 480) [W.SdlWindowOpengl]
+    (Right w) <- W.createWindow "A Window" (P W.Undefined W.Undefined) (P 640 480) [W.SdlWindowOpengl]
     stopTextInput
-    s <- newInternalState
-    l <- newFPSLimiter
+    s0 <- sdlSession
+    l0 <- fpsSession
     c <- createGLContext w
     glSetCurrent c
 
-    let dloop f' = do
-          (r', f) <- sdlStep s () f' (Right ())
+    let dloop s' l' f' = do
+          (r', f, s) <- sdlStep s' () f' $ Right ()
           case r' of
            Left () -> return ()
            Right (a, b) -> do
-             liftBase $ do
+             liftIO $ do
                clear [ColorBuffer]
                renderPrimitive Quads $ do
                  color $ Color3 1 1 (1 :: GLfloat)
@@ -51,16 +44,16 @@ main =
                    , (0.2 ,0, 0)
                    ]
              glSwap w
-             limitFPS_ l $ 1000 `div` 60
-             dloop f
+             (_, l) <- fpsLimit l' $ 1000 `div` 60
+             dloop s l f
 
-    dloop game
+    dloop s0 l0 game
     
     freeGLContext c
     W.freeWindow w
 
   where game = until . (level &&& (sdlOnEvent _Quit <!> onKey Pressed SdlkEscape))
         level = keys [(SdlkA, -0.2), (SdlkD, 0.2)] 0 &&& keys [(SdlkS, -0.2), (SdlkW, 0.2)] 0
-        keys k' l' = integral 0 . keys' k' l'
-          where keys' [] l = pure l
-                keys' ((k, v):t) l = (pure v . whileKey Pressed k <|> 0) + keys' t l
+        keys k' l = integral 0 . keys' k'
+          where keys' [] = pure l
+                keys' ((k, v):t) = (pure v . whileKey Pressed k <|> 0) + keys' t

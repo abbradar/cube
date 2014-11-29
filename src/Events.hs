@@ -1,15 +1,9 @@
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE ViewPatterns #-}
-{-# LANGUAGE NamedFieldPuns #-}
-
 import FRP.Netwire
 import Prelude hiding ((.), id)
-import Control.Monad.Logger (logWarn)
 import Control.Wire.Core (Wire (..))
-import Control.Monad.Base (liftBase)
-import Graphics.Rendering.OpenGL.GL.Tensor (Vector2(..))
+import Control.Monad.IO.Class (liftIO)
 
+import Graphics.UI.SDL.Types
 import Graphics.UI.SDL.Monad
 import Graphics.UI.SDL.Video.Monad
 import Graphics.UI.SDL.Video.Keyboard
@@ -25,23 +19,21 @@ import FRP.Netwire.SDL.Types
 main :: IO ()
 main =
   withSDL $ withSDLEvents $ withSDLTimer $ withSDLVideo $ do
-    $(logWarn) "hajimemashou"
-
-    w <- W.createWindow "A Window" (Vector2 W.Undefined W.Undefined) (Vector2 640 480) []
+    w <- W.createWindow "A Window" (P W.Undefined W.Undefined) (P 640 480) []
     stopTextInput
-    s <- newInternalState
-    l <- newFPSLimiter
+    s0 <- sdlSession
+    l0 <- fpsSession
 
-    let dloop f' = do
-          (r', f) <- sdlStep s () f' (Right ())
+    let dloop s' l' f' = do
+          (r', f, s) <- sdlStep s' () f' (Right ())
           case r' of
            Left _ -> return ()
            Right r -> do
-             limitFPS_ l $ 1000 `div` 2
-             liftBase $ putStrLn $ show r
-             dloop f
+             (_, l) <- fpsLimit l' $ 1000 `div` 2
+             liftIO $ putStrLn $ show r
+             dloop s l f
 
-    dloop $ wire . time
+    dloop s0 l0 $ wire . time
     
     W.freeWindow w
 

@@ -1,20 +1,16 @@
-{-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes #-}
 
-import Control.Monad.Base (MonadBase(..))
-import Control.Monad.Logger (logWarn, logDebug)
-import Data.Function (fix)
+import Control.Monad
+import Control.Monad.IO.Class (liftIO)
 import Data.Vector.Storable (Vector)
 import qualified Data.Vector.Storable as V
-import Foreign.Ptr (nullPtr)
-import Foreign.Storable (Storable, sizeOf)
-import Foreign.C.Types (CPtrdiff)
-import qualified Data.Text as T
-import Graphics.Rendering.OpenGL.GL
+import Foreign.Storable (Storable(..))
+import Text.InterpolatedString.Perl6 (q)
+import Control.Monad.Loops (iterateUntil)
+import Graphics.Caramia
   
-import Graphics.Rendering.OpenGL.Safe.Shaders
 import Graphics.UI.SDL.Monad
+import Graphics.UI.SDL.Types
 import Graphics.UI.SDL.Video.Monad
 import Graphics.UI.SDL.Video.Keyboard
 import qualified Graphics.UI.SDL.Video.Window as W
@@ -24,79 +20,65 @@ import Graphics.UI.SDL.Events.Monad
 import Graphics.UI.SDL.Events.Types
 import Graphics.UI.SDL.Timer.Monad
 
-import Multiline
-
-storableSize :: (Storable a) => Vector a -> CPtrdiff
-storableSize a = fromIntegral $ sizeOf (V.head a) * V.length a
+-- Total size of a vector; maybe useful enough to move inside library
+sizeOfV :: forall a. (Storable a) => Vector a -> Int
+sizeOfV vec = fromIntegral $ sizeOf (undefined :: a) * V.length vec
 
 main :: IO ()
 main = withSDL $ withSDLEvents $ withSDLTimer $ withSDLVideo $ do
-  $(logWarn) "hajimemashou"
   setGLAttribute ContextMajorVersion 3
   setGLAttribute ContextMinorVersion 3
   setGLAttribute ContextProfile SdlGlContextProfileCore
 
-  liftBase $ putStrLn "dick"
-  (Right w) <- W.createWindow "A Window" (Vector2 W.Undefined W.Undefined) (Vector2 640 480) [W.SdlWindowOpengl]
+  (Right w) <- W.createWindow "A Window" (P W.Undefined W.Undefined) (P 640 480) [W.SdlWindowOpengl]
   stopTextInput
   c <- createGLContext w
   glSetCurrent c
 
-  pr <- liftBase createProgram
-  prepareShader VertexShader vxsource >>= liftBase . attachShader pr
-  prepareShader FragmentShader fgsource >>= liftBase . attachShader pr
-  safeLinkProgram pr
-
-  liftBase $ do
-    vao <- liftBase genObjectName
-    liftBase $ bindVertexArrayObject $= Just vao
+  liftIO $ giveContext $ do
+    vx <- newShader vxsource Vertex
+    fg <- newShader fgsource Fragment
+    pl <- newPipeline [vx, fg]
+    vao <- newVAO
+    buff <- newBuffer defaultBufferCreation { accessHints = (Static, Draw)
+                                            , size = sizeOfV triangle
+                                            }
+    uploadVector triangle 0 buff
+    sourceVertexData buff defaultSourcing { components = 3
+                                          , attributeIndex = 0
+                                          , sourceType = SFloat
+                                          } vao
+    runDraws defaultDrawParams { pipeline = pl } $ do
+      drawR drawCommand { primitiveType = Triangles
+                        , primitivesVAO = vao
+                        , numIndices = 3
+                        , sourceData = Primitives 0
+                        }
   
-    vx <- liftBase genObjectName
-    bindBuffer ArrayBuffer $= Just vx
-    V.unsafeWith triangle $ \ptr ->
-      bufferData ArrayBuffer $= (storableSize triangle, ptr, StaticDraw)
-    bindBuffer ArrayBuffer $= Nothing
-
-  -- Drawing now
-    clear [ColorBuffer]
-    currentProgram $= Just pr
-
-    let attr = AttribLocation 0
-    vertexAttribArray attr $= Enabled
-    bindBuffer ArrayBuffer $= Just vx
-    vertexAttribPointer attr $= (ToFloat, VertexArrayDescriptor 3 Float 0 nullPtr)
-    drawArrays Triangles 0 3
-    vertexAttribArray attr $= Disabled
-      
   glSwap w
-  fix $ \next -> do
-    ev@(Event _ ed) <- waitEvent
-    $(logDebug) $ T.pack $ show ev
-    case ed of
-      Quit -> return ()
-      _ -> next
-      
+  void $ iterateUntil (\(Event _ ed) -> ed == Quit) waitEvent
   freeGLContext c
   W.freeWindow w
 
-  where triangle :: Vector GLfloat
-        triangle = V.fromList [-1.0, -1.0, 0.0,
-                               1.0, -1.0, 0.0,
-                               0.0, 1.0, 0.0]
+  where triangle :: Vector Float
+        triangle = V.fromList [-1.0, -1.0, 0.0
+                              , 1.0, -1.0, 0.0
+                              , 0.0, 1.0, 0.0
+                              ]
         vxsource =
-          [multiline|
+          [q|
            #version 330 core
 
-           layout(location = 0) in vec3 vertexPosition_modelspace;
+           layout(location = 0) in vec3 vpos;
 
            void main()
            {
-             gl_Position.xyz = vertexPosition_modelspace;
+             gl_Position.xyz = vpos;
              gl_Position.w = 1.0;
            }
           |]
         fgsource =
-          [multiline|
+          [q|
            #version 330 core
          
            out vec3 color;
