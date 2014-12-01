@@ -29,6 +29,21 @@ executable triangle
   ghc-options:         -Wall -threaded
   default-language:    Haskell2010
 
+executable heightmap
+  main-is:             Heightmap.hs
+  default-extensions:  OverloadedStrings
+                     , ScopedTypeVariables
+  build-depends:       base >=4.7 && <4.8
+                     , MySDL
+                     , caramia
+                     , vector
+                     , transformers
+                     , monad-loops
+                     , interpolatedstring-perl6
+  hs-source-dirs:      src
+  ghc-options:         -Wall -threaded
+  default-language:    Haskell2010
+
 executable wires
   main-is:             Wires.hs
   default-extensions:  OverloadedStrings
@@ -50,6 +65,17 @@ executable events
                      , MySDL
                      , transformers
                      , netwire
+  hs-source-dirs:      src
+  ghc-options:         -Wall
+  default-language:    Haskell2010
+
+executable glinfo
+  main-is:             GLInfo.hs
+  default-extensions:  OverloadedStrings
+  build-depends:       base >=4.7 && <4.8
+                     , MySDL
+                     , OpenGLRaw
+                     , transformers
   hs-source-dirs:      src
   ghc-options:         -Wall
   default-language:    Haskell2010

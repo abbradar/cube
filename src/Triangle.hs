@@ -36,9 +36,7 @@ main = withSDL $ withSDLEvents $ withSDLTimer $ withSDLVideo $ do
   glSetCurrent c
 
   liftIO $ giveContext $ do
-    vx <- newShader vxsource Vertex
-    fg <- newShader fgsource Fragment
-    pl <- newPipeline [vx, fg]
+    pl <- newPipelineVF vxsource fgsource
     vao <- newVAO
     buff <- newBuffer defaultBufferCreation { accessHints = (Static, Draw)
                                             , size = sizeOfV triangle
@@ -75,6 +73,7 @@ main = withSDL $ withSDLEvents $ withSDLTimer $ withSDLVideo $ do
            {
              gl_Position.xyz = vpos;
              gl_Position.w = 1.0;
+             gl_Position = gl_Position;
            }
           |]
         fgsource =
