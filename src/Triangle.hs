@@ -9,28 +9,19 @@ import Text.InterpolatedString.Perl6 (q)
 import Control.Monad.Loops (iterateUntil)
 import Graphics.Caramia
   
-import Graphics.UI.SDL.Monad
-import Graphics.UI.SDL.Types
-import Graphics.UI.SDL.Video.Monad
-import Graphics.UI.SDL.Video.Keyboard
-import qualified Graphics.UI.SDL.Video.Window as W
-import Graphics.UI.SDL.Video.OpenGL
-import Graphics.UI.SDL.Events
-import Graphics.UI.SDL.Events.Monad
-import Graphics.UI.SDL.Events.Types
-import Graphics.UI.SDL.Timer.Monad
+import Graphics.UI.SDL
 
 -- Total size of a vector; maybe useful enough to move inside library
 sizeOfV :: forall a. (Storable a) => Vector a -> Int
 sizeOfV vec = fromIntegral $ sizeOf (undefined :: a) * V.length vec
 
 main :: IO ()
-main = withSDL $ withSDLEvents $ withSDLTimer $ withSDLVideo $ do
+main = withSDLAllVideo $ do
   setGLAttribute ContextMajorVersion 3
   setGLAttribute ContextMinorVersion 3
   setGLAttribute ContextProfile SdlGlContextProfileCore
 
-  (Right w) <- W.createWindow "A Window" (P W.Undefined W.Undefined) (P 640 480) [W.SdlWindowOpengl]
+  (Right w) <- createWindow "A Window" (P NoHint NoHint) (P 640 480) [SdlWindowOpengl]
   stopTextInput
   c <- createGLContext w
   glSetCurrent c
@@ -54,9 +45,9 @@ main = withSDL $ withSDLEvents $ withSDLTimer $ withSDLVideo $ do
                         }
   
   glSwap w
-  void $ iterateUntil (\(Event _ ed) -> ed == Quit) waitEvent
+  void $ iterateUntil (\(SDLEvent _ ed) -> ed == Quit) waitEvent
   freeGLContext c
-  W.freeWindow w
+  freeWindow w
 
   where triangle :: Vector Float
         triangle = V.fromList [-1.0, -1.0, 0.0

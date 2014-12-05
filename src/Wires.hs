@@ -3,25 +3,13 @@ import Prelude hiding ((.), id, until)
 import Graphics.Rendering.OpenGL.GL
 import Control.Monad.IO.Class (liftIO)
 
-import Graphics.UI.SDL.Monad
-import Graphics.UI.SDL.Types
-import Graphics.UI.SDL.Video.Monad
-import Graphics.UI.SDL.Video.Keyboard
-import Graphics.UI.SDL.Video.Keyboard.Types
-import qualified Graphics.UI.SDL.Video.Window as W
-import Graphics.UI.SDL.Events.Monad
-import Graphics.UI.SDL.Events.Types
-import Graphics.UI.SDL.Timer.Monad
+import Graphics.UI.SDL
 import Graphics.UI.SDL.Utils.Framerate
-import Graphics.UI.SDL.Video.OpenGL
-import FRP.Netwire.Extra
 import FRP.Netwire.SDL
-import FRP.Netwire.SDL.Wires
 
 main :: IO ()
-main =
-  withSDL $ withSDLEvents $ withSDLTimer $ withSDLVideo $ do
-    (Right w) <- W.createWindow "A Window" (P W.Undefined W.Undefined) (P 640 480) [W.SdlWindowOpengl]
+main = withSDLAllVideo $ do
+    (Right w) <- createWindow "A Window" (P NoHint NoHint) (P 640 480) [SdlWindowOpengl]
     stopTextInput
     s0 <- sdlSession
     l0 <- fpsSession
@@ -50,7 +38,7 @@ main =
     dloop s0 l0 game
     
     freeGLContext c
-    W.freeWindow w
+    freeWindow w
 
   where game = until . (level &&& (sdlOnEvent _Quit <!> onKey Pressed SdlkEscape))
         level = keys [(SdlkA, -0.2), (SdlkD, 0.2)] 0 &&& keys [(SdlkS, -0.2), (SdlkW, 0.2)] 0
