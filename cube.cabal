@@ -18,11 +18,12 @@ executable triangle
   main-is:             Triangle.hs
   default-extensions:  OverloadedStrings
                      , ScopedTypeVariables
-  build-depends:       base >=4.7 && <4.8
-                     , MySDL
+  build-depends:       base >=4.7
+                     , sdl2
                      , caramia
                      , vector
                      , transformers
+                     , containers
                      , monad-loops
                      , interpolatedstring-perl6
   hs-source-dirs:      src
@@ -35,9 +36,10 @@ executable heightmap
                      , ScopedTypeVariables
                      , MultiWayIf
                      , Arrows
-  build-depends:       base >=4.7 && <4.8
-                     , MySDL
+  build-depends:       base >=4.7
+                     , sdl2
                      , caramia
+                     , linear
                      , repa
                      , transformers
                      , netwire
@@ -49,8 +51,8 @@ executable heightmap
 executable wires
   main-is:             Wires.hs
   default-extensions:  OverloadedStrings
-  build-depends:       base >=4.7 && <4.8
-                     , MySDL
+  build-depends:       base >=4.7
+                     , sdl2
                      , OpenGL
                      , transformers
                      , netwire
@@ -63,8 +65,8 @@ executable events
   default-extensions:  OverloadedStrings
                      , NamedFieldPuns
                      , ViewPatterns
-  build-depends:       base >=4.7 && <4.8
-                     , MySDL
+  build-depends:       base >=4.7 && <4.9
+                     , sdl2
                      , transformers
                      , netwire
   hs-source-dirs:      src
@@ -74,8 +76,8 @@ executable events
 executable glinfo
   main-is:             GLInfo.hs
   default-extensions:  OverloadedStrings
-  build-depends:       base >=4.7 && <4.8
-                     , MySDL
+  build-depends:       base >=4.7 && <4.9
+                     , sdl2
                      , OpenGLRaw
                      , transformers
   hs-source-dirs:      src

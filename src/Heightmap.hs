@@ -2,15 +2,16 @@
 
 import Prelude hiding ((.), id, until)
 import Control.Wire hiding (when)
-import FRP.Netwire hiding (when)
 import Data.Word
 import Control.Monad
 import Control.Monad.IO.Class
 import Foreign.Storable (Storable(..))
 import Foreign.ForeignPtr
 import Text.InterpolatedString.Perl6 (q)
-import Graphics.Caramia hiding (map)
-import Graphics.Caramia.Math
+import Graphics.Caramia
+import Linear.V3
+import Linear.Matrix
+import Linear.Projection
 import qualified Data.Array.Repa as R
 import Data.Array.Repa (Array, Source, Shape)
 import Data.Array.Repa.Index
@@ -63,8 +64,8 @@ main = withSDLAllVideo $ do
   setGLAttribute ContextProfile SdlGlContextProfileCore
   setGLAttribute ContextFlags [SdlGlContextDebugFlag]
 
-  let isize = P 640 480
-  (Right w) <- createWindow "A Window" (P NoHint NoHint) isize [SdlWindowOpengl]
+  let isize = V2 640 480
+  (Right w) <- createWindow "A Window" (V2 NoHint NoHint) isize [SdlWindowOpengl]
   stopTextInput
 
   s0 <- sdlSession
@@ -125,7 +126,7 @@ main = withSDLAllVideo $ do
 
       level = proc _ -> do
         -- On event of window resize (and on game start), resize viewport
-        _ <- onUEventM (\(P w h) -> setViewportSize (fromIntegral w) (fromIntegral h)) .
+        _ <- onUEventM (\(V2 w h) -> setViewportSize (fromIntegral w) (fromIntegral h)) .
              (now . pure isize &> sdlOnEvent_ (anyWindow . _Resized)) -< ()
         -- On the start of the game and when Esc is pressed toogle mouse grabbing
         esc <- mouseGrab . (now <!> onKey Pressed SdlkEscape) -< ()
@@ -133,9 +134,9 @@ main = withSDLAllVideo $ do
         (mx, my) <- (mouseW *** mouseW) . (mouseMove Nothing . ifW <|> pure (0, 0)) -< ((), esc)
 
         -- Get window size, compute matrices.
-        (P w h) <- sdlOnState $ anyWindowState . wsize -< ()
+        (V2 w h) <- sdlOnState $ anyWindowState . wsize -< ()
         let ratio = fromIntegral w / fromIntegral h
-            frust = frustum44 (-ratio) ratio (-1) 1 1 10
+            frust = frustum (-ratio) ratio (-1) 1 1 10 :: M44 Float
         draw -< frust
 
       dloop s' l' f' = do
@@ -162,12 +163,15 @@ main = withSDLAllVideo $ do
                , (2, 1, -0.2)
                , (2, 2, 0.1)
                ]-}
+        hmap :: Array R.U DIM2 (V3 Float)
         hmap = R.fromListUnboxed (ix2 2 2) $ map fromTuple3
                [ (-0.2, -0.2, -1)
                , (-0.2, 0.2, -1.5)
                , (0.2, -0.2, -1.5)
                , (0.3, 0.3, -1.5)
                ]
+
+        fromTuple3 (x, y, z) = V3 x y z
 
         vxsource =
           [q|
