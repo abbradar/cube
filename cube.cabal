@@ -20,6 +20,7 @@ executable triangle
   default-extensions:  OverloadedStrings
                      , ScopedTypeVariables
                      , QuasiQuotes
+                     , RecordWildCards
   build-depends:       base >=4.7
                      , text
                      , bytestring
