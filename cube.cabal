@@ -6,8 +6,8 @@ version:             0.1.0.0
 -- synopsis:            
 -- description:         
 license:             BSD3
-author:              Nikolay Amiantov
-maintainer:          nikoamia@gmail.com
+author:              abbradar, Tensus
+maintainer:          ab@fmap.me
 -- copyright:           
 -- category:            
 build-type:          Simple
@@ -15,7 +15,7 @@ build-type:          Simple
 cabal-version:       >=1.10
 
 executable triangle
-  main-is:             Triangle.hs
+  main-is:             Main.hs
   default-extensions:  OverloadedStrings
                      , ScopedTypeVariables
   build-depends:       base >=4.7
@@ -27,60 +27,6 @@ executable triangle
                      , containers
                      , monad-loops
                      , interpolatedstring-perl6
-  hs-source-dirs:      src
-  ghc-options:         -Wall -threaded
-  default-language:    Haskell2010
-
-executable heightmap
-  main-is:             Heightmap.hs
-  default-extensions:  OverloadedStrings
-                     , ScopedTypeVariables
-                     , MultiWayIf
-                     , Arrows
-  build-depends:       base >=4.7
-                     , sdl2
-                     , caramia
-                     , linear
-                     , repa
-                     , transformers
-                     , netwire
-                     , interpolatedstring-perl6
-  hs-source-dirs:      src
-  ghc-options:         -Wall -threaded
-  default-language:    Haskell2010
-
-executable wires
-  main-is:             Wires.hs
-  default-extensions:  OverloadedStrings
-  build-depends:       base >=4.7
-                     , sdl2
-                     , OpenGL
-                     , transformers
-                     , netwire
-  hs-source-dirs:      src
-  ghc-options:         -Wall -threaded
-  default-language:    Haskell2010
-
-executable events
-  main-is:             Events.hs
-  default-extensions:  OverloadedStrings
-                     , NamedFieldPuns
-                     , ViewPatterns
-  build-depends:       base >=4.7 && <4.9
-                     , sdl2
-                     , transformers
-                     , netwire
-  hs-source-dirs:      src
-  ghc-options:         -Wall -threaded
-  default-language:    Haskell2010
-
-executable glinfo
-  main-is:             GLInfo.hs
-  default-extensions:  OverloadedStrings
-  build-depends:       base >=4.7 && <4.9
-                     , sdl2
-                     , OpenGLRaw
-                     , transformers
   hs-source-dirs:      src
   ghc-options:         -Wall -threaded
   default-language:    Haskell2010
