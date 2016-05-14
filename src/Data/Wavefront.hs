@@ -36,6 +36,6 @@ prefix :: ByteString -> Parser ()
 prefix s = void $ string s *> char ' '
 
 parseOBJ :: Parser (Vector Wavefront)
-parseOBJ = V.fromList <$> many (skipComments *> line)
+parseOBJ = V.fromList <$> many (skipComments *> line) <* skipSpace <* endOfInput
   where line =     WFVertex <$> (prefix "v" *> point3)
                <|> WFNormal <$> (prefix "vn" *> point3)
