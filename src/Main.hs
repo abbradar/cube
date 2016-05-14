@@ -4,9 +4,10 @@
 import Control.Monad
 import qualified Data.Map as M
 import Control.Monad.IO.Class (liftIO)
-import Control.Monad.IO.Class (MonadIO)
+import Engine.Camera
+import Data.Default
+import Debug.Trace
 import Linear.Matrix
-import Linear.Projection
 import Linear.V3
 import Data.Vector.Storable (Vector)
 import qualified Data.Vector.Storable as V
@@ -118,6 +119,7 @@ drawloop pl vao w =
       drawloop pl vao w
   where mvM :: M44 Float
         pM :: M44 Float   
-        mvM = transpose ( lookAt (V3 (-10.0) 0.0 (12.0)) (V3 0.0 0.0 0.0) (V3 0.0 0.1 0.0))
-        pM = transpose (perspective (pi/4.0) (4.0/3.0) 0.1 1000.0)
+        cam = def {eye = (V3 (-10.0) 0.0 (12.0))} :: Camera
+        mvM = viewMatrix cam
+        pM =  projectionMatrix cam
 

@@ -22,6 +22,7 @@ executable triangle
                      , sdl2
                      , caramia
                      , linear
+                     , data-default
                      , vector
                      , transformers
                      , containers
