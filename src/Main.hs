@@ -1,6 +1,3 @@
-{-# LANGUAGE QuasiQuotes #-}
-{-# LANGUAGE OverloadedStrings #-}
-
 import Control.Monad
 import qualified Data.Map as M
 import Control.Monad.IO.Class (liftIO)
