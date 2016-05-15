@@ -22,6 +22,7 @@ executable triangle
                      , Engine.Framerate
   default-extensions:  OverloadedStrings
                      , ScopedTypeVariables
+                     , TemplateHaskell
                      , QuasiQuotes
                      , RecordWildCards
                      , StandaloneDeriving
@@ -32,6 +33,7 @@ executable triangle
                      , sdl2
                      , caramia
                      , linear
+                     , lens
                      , data-default
                      , vector
                      , transformers

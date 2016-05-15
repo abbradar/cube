@@ -21,6 +21,7 @@ import Linear.Matrix
 import Graphics.Caramia
 
 import Data.Wavefront
+import Engine.Types
 
 --import Debug.Trace
 

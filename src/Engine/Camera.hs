@@ -1,31 +1,47 @@
 module Engine.Camera where
 
-import Linear.Matrix
-import Linear.Projection
-import Linear.V3
+import Linear
 import Data.Default
+import Control.Lens.TH
 
-data Camera = Camera { eye :: V3 Float
-                     , center :: V3 Float
-                     , up :: V3 Float
-                     , fov :: Float
-                     , ratio :: Float
-                     , nplane :: Float
-                     , fplane :: Float
+import Engine.Types
+
+import Debug.Trace
+
+data Camera = Camera { _eye :: F3
+                     , _rotation :: QF
+                     , _fov :: Float
+                     , _ratio :: Float
+                     , _nplane :: Float
+                     , _fplane :: Float
                      } deriving (Show, Eq)
 
+$(makeLenses ''Camera)
+
 instance Default Camera where
-  def = Camera { eye = (V3 5.0 0.0 5.0)
-               , center = (V3 0.0 0.0 0.0)
-               , up = (V3 0.0 1.0 0.0)
-               , fov = pi/4.0
-               , ratio = 4.0/3.0
-               , nplane = 0.1
-               , fplane = 1000.0
+  def = Camera { _eye = (V3 0.0 0.0 0.0)
+               , _rotation = Quaternion 0 (V3 1.0 0.0 0.0)
+               , _fov = pi/4.0
+               , _ratio = 4.0/3.0
+               , _nplane = 0.1
+               , _fplane = 1000.0
                }
 
-projectionMatrix :: Camera -> M44 Float
-projectionMatrix (Camera {..}) = transpose $ perspective fov ratio nplane fplane
+projectionMatrix :: Camera -> MF44
+projectionMatrix (Camera {..}) = transpose $ perspective _fov _ratio _nplane _fplane
 
-viewMatrix :: Camera -> M44 Float
-viewMatrix (Camera {..}) = transpose $ lookAt eye center up
+viewMatrix :: Camera -> MF44
+viewMatrix (Camera {..}) = mkTransformation _rotation _eye
+
+moveEyes :: F3 -> Camera -> Camera
+moveEyes vec cam@(Camera {..}) = cam { _eye = _eye + rotate _rotation vec }
+
+-- Expects relative move of the mouse in range [-1; 1]
+rotateEyes :: F2 -> Camera -> Camera
+rotateEyes rel@(V2 x y) cam@(Camera {..})
+  | nearZero rel = cam
+  | otherwise = cam { _rotation = normalize $ Quaternion ang planeN * _rotation }
+  where n = V3 0 0 _nplane
+        v = V3 x y _nplane
+        planeN = n `cross` v
+        ang = acos (norm n / norm v)

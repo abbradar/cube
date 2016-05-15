@@ -20,15 +20,17 @@ newFPSLimit = do
   FPSLimit <$> newIORef t0
 
 -- | Given frame time (inverted FPS), delay a thread.
-fpsDelay :: FPSLimit -> Word32 -> IO ()
+fpsDelay :: FPSLimit -> Word32 -> IO Word32
 fpsDelay (FPSLimit st) limit = do
   old <- readIORef st
   curr <- ticks
   let target = old + limit
   let diff = target - curr
-  next <- if diff < maxBound `div` 2
-          then do
-            threadDelay $ 1000 * fromIntegral diff
-            return target
-          else return curr
+  (next, interval) <-
+    if diff < maxBound `div` 2
+    then do
+      threadDelay $ 1000 * fromIntegral diff
+      return (target, limit)
+    else return (curr, curr - old)
   writeIORef st next
+  return interval

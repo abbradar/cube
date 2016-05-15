@@ -1,20 +1,27 @@
+import Data.Int
 import Data.Word
 import System.Environment
 import qualified Data.Map as M
+import qualified Data.Set as S
 import Data.Default
-import Linear.V3
+import Linear
 import Text.InterpolatedString.Perl6 (q)
-import Graphics.Caramia
+import Control.Lens
+import Graphics.Caramia as Car hiding (normalize)
 import SDL
 
 import Engine.Mesh
 import Engine.Camera
 import Engine.Framerate
+import Game.Types
 
 import Debug.Trace
 
 data GameSettings = GameSettings { meshPath :: FilePath
                                  , intervalTime :: Word32
+                                 , initialSize :: V2 Int32
+                                 , movementSpeed :: Float
+                                 , mouseSensitivity :: Float
                                  }
                   deriving (Show, Read, Eq)
 
@@ -22,9 +29,6 @@ data GameInitialState = GameInitialState { pl :: Pipeline
                                          , meshBuffer :: MeshBuffer
                                          , fpsLimit :: FPSLimit
                                          }
-
-data GameState = GameState { camera :: Camera
-                           }
 
 main :: IO ()
 main = do
@@ -36,7 +40,9 @@ main = do
 
   initialize [InitVideo, InitEvents]
 
-  w <- createWindow "A Window" defaultWindow { windowOpenGL = Just defaultOpenGL { glProfile = Core Debug 3 3 } }
+  w <- createWindow "A Window" defaultWindow { windowInitialSize = fromIntegral <$> initialSize
+                                             , windowOpenGL = Just defaultOpenGL { glProfile = Core Debug 3 3 }
+                                             }
   c <- glCreateContext w
   glMakeCurrent w c
 
@@ -48,8 +54,11 @@ main = do
     fpsLimit <- newFPSLimit
  
     let initialState = GameInitialState {..}
-        state0 = GameState { camera = def { eye = (V3 10.0 0.0 12.0)
-                                          }
+        state0 = GameState { _camera = def
+                           , _pressedKeys = S.empty
+                           , _frameSize = initialSize
+                           , _frameTime = intervalTime
+                           , _movedMouse = V2 0 0
                            }
     drawLoop w settings initialState state0
 
@@ -96,23 +105,49 @@ drawLoop w (GameSettings {..}) (GameInitialState {..}) = loop
       case mst of
         Nothing -> return ()
         Just st' -> do
-          doDraw st'
-          fpsDelay fpsLimit intervalTime
-          loop st'
+          let st'' = updateState st'
+          doDraw st''
+          ftime <- fpsDelay fpsLimit intervalTime
+          loop (st'' & frameTime .~ ftime)
 
     processEvent Nothing _ = Nothing
     processEvent (Just st) (Event {..}) = case eventPayload of
       QuitEvent -> Nothing
-      -- TODO: do something
-      KeyboardEvent kd -> Just st
+      -- FIXME: update camera
+      -- XXX: maybe WindowSizeChangedEvent is more proper here?
+      WindowResizedEvent (WindowResizedEventData {..}) -> Just (st & frameSize .~ windowResizedEventSize)
+      MouseMotionEvent (MouseMotionEventData {..}) -> Just (st & movedMouse %~ (+ mouseMotionEventRelMotion))
+      KeyboardEvent (KeyboardEventData {..}) -> case keyboardEventKeyMotion of
+        Pressed -> Just (st & pressedKeys %~ S.insert (keysymKeycode keyboardEventKeysym))
+        Released -> Just (st & pressedKeys %~ S.delete (keysymKeycode keyboardEventKeysym))
       _ -> Just st
 
-    doDraw (GameState {..}) = do
-      let mvM = viewMatrix camera
-          pM = projectionMatrix camera
+    updateState = updatePos . updateLook
 
-      Graphics.Caramia.clear clearing { clearColor = Just $ rgba 0.4 0.4 0.4 1.0
-                                      } screenFramebuffer
+    updatePos st@(GameState {..}) = st & camera %~ moveEyes (movementSpeed * fromIntegral _frameTime *^ delta)
+      where delta = normalize $ fwd + back + left + right
+
+            moveKey k v
+              | k `S.member` _pressedKeys = v
+              | otherwise = V3 0 0 0
+
+            fwd = moveKey KeycodeW (V3 0 1 0)
+            back = moveKey KeycodeS (V3 0 (-1) 0)
+            left = moveKey KeycodeA (V3 1 0 0)
+            right = moveKey KeycodeD (V3 (-1) 0 0)
+
+    updateLook st@(GameState {..}) =
+      st & camera %~ rotateEyes (mouseSensitivity * 2 *^ (fromIntegral <$> _movedMouse) / (fromIntegral <$> _frameSize))
+         & movedMouse .~ V2 0 0
+
+    doDraw (GameState {..}) = do
+      let mvM = viewMatrix _camera
+          pM = projectionMatrix _camera
+
+      print (_eye _camera, _rotation _camera)
+      -- FIXME: set viewpoint size according to window size
+      Car.clear clearing { clearColor = Just $ rgba 0.4 0.4 0.4 1.0
+                         } screenFramebuffer
       runDraws defaultDrawParams { pipeline = pl } $ do
         pMloc <- getUniformLocation "projectionMat" pl
         setUniform pM pMloc pl

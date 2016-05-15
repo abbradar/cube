@@ -1,7 +1,5 @@
 module Data.Wavefront
        ( Wavefront(..)
-       , F3
-       , I3
        , parseOBJ
        , WFModel(..)
        , extractModel
@@ -57,7 +55,9 @@ data WFModel = WFModel { wfNormals :: [F3]
                        , wfVertices :: [F3]
                        , wfIndices :: [I3]
                        }
+             deriving (Show, Eq)
 
+-- FIXME: replace when data-default-class is updated on Hackage
 instance Default WFModel where
   def = WFModel { wfNormals = []
                 , wfVertices = []
