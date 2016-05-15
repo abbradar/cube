@@ -21,6 +21,8 @@ executable triangle
                      , ScopedTypeVariables
                      , QuasiQuotes
                      , RecordWildCards
+                     , StandaloneDeriving
+                     , DeriveGeneric
   build-depends:       base >=4.7
                      , text
                      , bytestring

@@ -6,17 +6,15 @@ import Data.Default
 import Debug.Trace
 import Linear.Matrix
 import Linear.V3
-import Data.Vector.Storable (Vector)
-import qualified Data.Vector.Storable as V
-import Foreign.Storable (Storable(..))
+import Engine.Mesh
+--import Data.Vector.Storable (Vector)
+--import qualified Data.Vector.Storable as V
+--import Foreign.Storable (Storable(..))
 import Text.InterpolatedString.Perl6 (q)
 --import Control.Monad.Loops (iterateUntil)
 import Graphics.Caramia
 import SDL
 
--- Total size of a vector; maybe useful enough to move inside library
-sizeOfV :: forall a. (Storable a) => Vector a -> Int
-sizeOfV vec = sizeOf (undefined :: a) * V.length vec
 
 main :: IO ()
 main = do
@@ -28,39 +26,17 @@ main = do
 
   liftIO $ giveContext $ do
     pl <- newPipelineVF vxsource fgsource M.empty
-    vao <- newVAO
-    buff <- newBuffer defaultBufferCreation { accessHints = (Static, Draw)
-                                            , size = sizeOfV triangle + sizeOfV trianglecol
-                                            }
-    uploadVector triangle 0 buff
-    sourceVertexData buff defaultSourcing { components = 3
-                                          , attributeIndex = 0
-                                          , sourceType = SFloat
-                                          } vao
 
-    uploadVector trianglecol (sizeOfV triangle) buff
-    sourceVertexData buff defaultSourcing { offset = (sizeOfV triangle)
-                                          ,components = 3
-                                          , attributeIndex = 1
-                                          , sourceType = SFloat
-                                          } vao
+    trimesh <- loadMeshObj "src/Data/pyramid.obj"
+    meshbuff <- initMesh trimesh
+ 
     glSwapWindow w
-    drawloop pl vao w
+    drawloop pl meshbuff w
 
   glDeleteContext c
   destroyWindow w
 
-  where triangle :: Vector Float
-        triangle = V.fromList [-1.0, -1.0, 0.0
-                              , 1.0, -1.0, 0.0
-                              , 0.0, 1.0, 0.0
-                              ]
-        trianglecol :: Vector Float
-        trianglecol = V.fromList [1.0, 0.0, 0.0
-                               , 0.0, 1.0, 0.0
-                               , 0.0, 0.0, 1.0
-                               ]
-        vxsource =
+  where vxsource =
           [q|
            #version 330 core
 
@@ -92,8 +68,8 @@ main = do
           |]
 
 
-drawloop :: Pipeline -> VAO -> Window -> IO ()
-drawloop pl vao w = 
+drawloop :: Pipeline -> MeshBuffer -> Window -> IO ()
+drawloop pl meshbuff w = 
   do
     events <- pollEvents
     let noexitEv = (null (filter (\e -> eventPayload e == QuitEvent) events))
@@ -101,22 +77,16 @@ drawloop pl vao w =
       Graphics.Caramia.clear clearing { clearColor = Just $ rgba 0.4 0.4 0.4 1.0
                                       } screenFramebuffer
       runDraws defaultDrawParams { pipeline = pl } $ do
-        mvMloc <- getUniformLocation "modelViewMat" pl
         pMloc <- getUniformLocation "projectionMat" pl
-        setUniform mvM mvMloc pl
         setUniform pM pMloc pl
+        drawMesh meshbuff pl mvM
 
-        drawR drawCommand { primitiveType = Triangles
-                          , primitivesVAO = vao
-                          , numIndices = 3
-                          , sourceData = Primitives 0
-                          }
       runPendingFinalizers
       glSwapWindow w
-      drawloop pl vao w
+      drawloop pl meshbuff w
   where mvM :: M44 Float
         pM :: M44 Float   
-        cam = def {eye = (V3 (-10.0) 0.0 (12.0))} :: Camera
+        cam = def {eye = (V3 (10.0) 0.0 (12.0))} :: Camera
         mvM = viewMatrix cam
         pM =  projectionMatrix cam
 
