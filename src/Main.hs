@@ -1,37 +1,55 @@
-import Control.Monad
+import Data.Word
+import System.Environment
 import qualified Data.Map as M
-import Control.Monad.IO.Class (liftIO)
-import Engine.Camera
 import Data.Default
-import Debug.Trace
 import Linear.Matrix
 import Linear.V3
 import Engine.Mesh
---import Data.Vector.Storable (Vector)
---import qualified Data.Vector.Storable as V
---import Foreign.Storable (Storable(..))
 import Text.InterpolatedString.Perl6 (q)
---import Control.Monad.Loops (iterateUntil)
 import Graphics.Caramia
 import SDL
 
+import Engine.Camera
+import Engine.Framerate
+
+import Debug.Trace
+
+data GameSettings = GameSettings { meshPath :: FilePath
+                                 , intervalTime :: Word32
+                                 }
+                  deriving (Show, Read, Eq)
+
+data GameInitialState = GameInitialState { pl :: Pipeline
+                                         , meshBuffer :: MeshBuffer
+                                         , fpsLimit :: FPSLimit
+                                         }
+
+data GameState = GameState { }
 
 main :: IO ()
 main = do
+  args <- getArgs
+  let settingsPath = case args of
+        [] -> "data/game.cfg"
+        path:_ -> path
+  settings@(GameSettings {..}) <- read <$> readFile settingsPath
+
   initialize [InitVideo, InitEvents]
 
   w <- createWindow "A Window" defaultWindow { windowOpenGL = Just defaultOpenGL { glProfile = Core Debug 3 3 } }
   c <- glCreateContext w
   glMakeCurrent w c
 
-  liftIO $ giveContext $ do
+  giveContext $ do
     pl <- newPipelineVF vxsource fgsource M.empty
 
-    trimesh <- loadMeshObj "src/Data/pyramid.obj"
-    meshbuff <- initMesh trimesh
+    mesh <- loadMesh meshPath
+    meshBuffer <- initMeshBuffer mesh
+    fpsLimit <- newFPSLimit
  
-    glSwapWindow w
-    drawloop pl meshbuff w
+    let initialState = GameInitialState {..}
+        state0 = GameState { }
+    drawLoop w settings initialState state0
 
   glDeleteContext c
   destroyWindow w
@@ -67,26 +85,40 @@ main = do
            }
           |]
 
+drawLoop :: Window -> GameSettings -> GameInitialState -> GameState -> IO ()
+drawLoop w (GameSettings {..}) (GameInitialState {..}) = loop
+  where
+    loop st = do
+      events <- pollEvents
+      let mst = foldl processEvent (Just st) events
+      case mst of
+        Nothing -> return ()
+        Just st' -> do
+          doDraw st'
+          fpsDelay fpsLimit intervalTime
+          loop st'
 
-drawloop :: Pipeline -> MeshBuffer -> Window -> IO ()
-drawloop pl meshbuff w = 
-  do
-    events <- pollEvents
-    let noexitEv = (null (filter (\e -> eventPayload e == QuitEvent) events))
-    when noexitEv $ do
+    processEvent Nothing _ = Nothing
+    processEvent (Just st) (Event {..}) = case eventPayload of
+      QuitEvent -> Nothing
+      -- TODO: do something
+      KeyboardEvent kd -> Just st
+      _ -> Just st
+
+    doDraw st = do
       Graphics.Caramia.clear clearing { clearColor = Just $ rgba 0.4 0.4 0.4 1.0
                                       } screenFramebuffer
       runDraws defaultDrawParams { pipeline = pl } $ do
         pMloc <- getUniformLocation "projectionMat" pl
         setUniform pM pMloc pl
-        drawMesh meshbuff pl mvM
+        drawMesh meshBuffer pl mvM
 
       runPendingFinalizers
       glSwapWindow w
-      drawloop pl meshbuff w
-  where mvM :: M44 Float
-        pM :: M44 Float   
-        cam = def {eye = (V3 (10.0) 0.0 (12.0))} :: Camera
-        mvM = viewMatrix cam
-        pM =  projectionMatrix cam
+
+    mvM :: M44 Float
+    pM :: M44 Float
+    cam = def {eye = (V3 (10.0) 0.0 (12.0))} :: Camera
+    mvM = viewMatrix cam
+    pM =  projectionMatrix cam
 

@@ -17,6 +17,9 @@ cabal-version:       >=1.10
 executable triangle
   main-is:             Main.hs
   other-modules:       Data.Wavefront
+                     , Engine.Mesh
+                     , Engine.Camera
+                     , Engine.Framerate
   default-extensions:  OverloadedStrings
                      , ScopedTypeVariables
                      , QuasiQuotes

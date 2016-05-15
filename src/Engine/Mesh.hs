@@ -1,15 +1,26 @@
-module Engine.Mesh where
+module Engine.Mesh
+       ( Vert
+       , Ind
+       , Mesh
+       , vertices
+       , indices
+       , loadMesh
+       , MeshBuffer
+       , initMeshBuffer
+       , drawMesh
+       ) where
 
+import Foreign.Storable (Storable(..))
 import qualified Data.Vector.Storable as VS
 import Data.Vector.Storable (Vector)
+import qualified Data.ByteString.Lazy as BL
+import Data.Attoparsec.ByteString.Lazy
 import Linear.V2
 import Linear.V3
 import Linear.Matrix
-import Data.Wavefront
-import qualified Data.ByteString.Lazy as BL
-import Data.Attoparsec.ByteString.Lazy
 import Graphics.Caramia
-import Foreign.Storable (Storable(..))
+
+import Data.Wavefront
 
 --import Debug.Trace
 
@@ -24,8 +35,8 @@ data Mesh = Mesh { vertices :: Vector Vert
                  , indices :: Vector Ind
                  } 
 
-loadMeshObj :: FilePath -> IO Mesh
-loadMeshObj name = do
+loadMesh :: FilePath -> IO Mesh
+loadMesh name = do
   inp <- BL.readFile name
   case parse parseOBJ inp of
     Fail _ stack err -> fail $ "Error while parsing: " ++ show stack ++ ": " ++ err
@@ -43,28 +54,32 @@ data MeshBuffer = MeshBuffer { mvao :: VAO
                              , indNumber :: Int
                              }
 
-initMesh :: Mesh -> IO MeshBuffer
-initMesh mesh = do
+initMeshBuffer :: Mesh -> IO MeshBuffer
+initMeshBuffer mesh = do
   vao <- newVAO
   buff <- newBuffer defaultBufferCreation { accessHints = (Static, Draw)
-                                            , size = sizeOfV (vertices mesh) + sizeOfV(indices mesh)
-                                            }
+                                          , size = sizeOfV (vertices mesh) + sizeOfV(indices mesh)
+                                          }
   uploadVector (vertices mesh) 0 buff
   sourceVertexData buff defaultSourcing { components = 3
-                                          , stride = sizeOf (undefined :: Vert)
-                                          , attributeIndex = 0
-                                          , sourceType = SFloat
-                                          } vao
-
+                                        , stride = sizeOf (undefined :: Vert)
+                                        , attributeIndex = 0
+                                        , sourceType = SFloat
+                                        } vao
+  
   sourceVertexData buff defaultSourcing { offset = sizeOf (undefined :: (V3 Float))
-                                          ,components = 3
-                                          , stride = sizeOf (undefined :: Vert)
-                                          , attributeIndex = 1
-                                          , sourceType = SFloat
-                                          } vao
+                                        , components = 3
+                                        , stride = sizeOf (undefined :: Vert)
+                                        , attributeIndex = 1
+                                        , sourceType = SFloat
+                                        } vao
 
   uploadVector (indices mesh) (sizeOfV (vertices mesh)) buff
-  return MeshBuffer { mvao = vao, mbuffer = buff, indOffset = (sizeOfV (vertices mesh)), indNumber = (3*(VS.length (indices mesh))) }
+  return MeshBuffer { mvao = vao
+                    , mbuffer = buff
+                    , indOffset = sizeOfV (vertices mesh)
+                    , indNumber = 3*(VS.length (indices mesh))
+                    }
 
 drawMesh :: MeshBuffer -> Pipeline -> (M44 Float) -> DrawT IO ()
 drawMesh mesh pl mvM = do

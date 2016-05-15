@@ -24,8 +24,8 @@ instance Default Camera where
                , fplane = 1000.0
                }
 
-projectionMatrix :: Camera -> (M44 Float) 
+projectionMatrix :: Camera -> M44 Float
 projectionMatrix (Camera {..}) = transpose $ perspective fov ratio nplane fplane
 
-viewMatrix :: Camera -> (M44 Float) 
+viewMatrix :: Camera -> M44 Float
 viewMatrix (Camera {..}) = transpose $ lookAt eye center up
