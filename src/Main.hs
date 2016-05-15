@@ -2,13 +2,12 @@ import Data.Word
 import System.Environment
 import qualified Data.Map as M
 import Data.Default
-import Linear.Matrix
 import Linear.V3
-import Engine.Mesh
 import Text.InterpolatedString.Perl6 (q)
 import Graphics.Caramia
 import SDL
 
+import Engine.Mesh
 import Engine.Camera
 import Engine.Framerate
 
@@ -24,7 +23,8 @@ data GameInitialState = GameInitialState { pl :: Pipeline
                                          , fpsLimit :: FPSLimit
                                          }
 
-data GameState = GameState { }
+data GameState = GameState { camera :: Camera
+                           }
 
 main :: IO ()
 main = do
@@ -48,7 +48,9 @@ main = do
     fpsLimit <- newFPSLimit
  
     let initialState = GameInitialState {..}
-        state0 = GameState { }
+        state0 = GameState { camera = def { eye = (V3 10.0 0.0 12.0)
+                                          }
+                           }
     drawLoop w settings initialState state0
 
   glDeleteContext c
@@ -105,7 +107,10 @@ drawLoop w (GameSettings {..}) (GameInitialState {..}) = loop
       KeyboardEvent kd -> Just st
       _ -> Just st
 
-    doDraw st = do
+    doDraw (GameState {..}) = do
+      let mvM = viewMatrix camera
+          pM = projectionMatrix camera
+
       Graphics.Caramia.clear clearing { clearColor = Just $ rgba 0.4 0.4 0.4 1.0
                                       } screenFramebuffer
       runDraws defaultDrawParams { pipeline = pl } $ do
@@ -115,10 +120,3 @@ drawLoop w (GameSettings {..}) (GameInitialState {..}) = loop
 
       runPendingFinalizers
       glSwapWindow w
-
-    mvM :: M44 Float
-    pM :: M44 Float
-    cam = def {eye = (V3 (10.0) 0.0 (12.0))} :: Camera
-    mvM = viewMatrix cam
-    pM =  projectionMatrix cam
-
