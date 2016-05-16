@@ -11,8 +11,8 @@ module Engine.Mesh
        ) where
 
 import Foreign.Storable (Storable(..))
-import qualified Data.Vector.Storable as VS
 import Data.Vector.Storable (Vector)
+import qualified Data.Vector.Storable as VS
 import qualified Data.ByteString.Lazy as BL
 import Data.Attoparsec.ByteString.Lazy
 import Linear.V2
