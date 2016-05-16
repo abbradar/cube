@@ -19,8 +19,8 @@ data Camera = Camera { _eye :: F3
 $(makeLenses ''Camera)
 
 instance Default Camera where
-  def = Camera { _eye = (V3 0.0 0.0 0.0)
-               , _rotation = Quaternion 0 (V3 1.0 0.0 0.0)
+  def = Camera { _eye = (V3 0.0 0.0 (-8))
+               , _rotation = axisAngle (V3 0 1 0) 0
                , _fov = pi/4.0
                , _ratio = 4.0/3.0
                , _nplane = 0.1
@@ -31,16 +31,16 @@ projectionMatrix :: Camera -> MF44
 projectionMatrix (Camera {..}) = transpose $ perspective _fov _ratio _nplane _fplane
 
 viewMatrix :: Camera -> MF44
-viewMatrix (Camera {..}) = mkTransformation _rotation _eye
+viewMatrix (Camera {..}) = transpose $ mkTransformation _rotation _eye
 
 moveEyes :: F3 -> Camera -> Camera
-moveEyes vec cam@(Camera {..}) = cam { _eye = _eye + rotate _rotation vec }
+moveEyes vec cam@(Camera {..}) = cam { _eye = _eye + vec }
 
 -- Expects relative move of the mouse in range [-1; 1]
 rotateEyes :: F2 -> Camera -> Camera
 rotateEyes rel@(V2 x y) cam@(Camera {..})
   | nearZero rel = cam
-  | otherwise = cam { _rotation = normalize $ Quaternion ang planeN * _rotation }
+  | otherwise = cam { _rotation = axisAngle planeN ang * _rotation }
   where n = V3 0 0 _nplane
         v = V3 x y _nplane
         planeN = n `cross` v

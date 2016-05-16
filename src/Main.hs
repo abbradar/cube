@@ -131,13 +131,13 @@ drawLoop w (GameSettings {..}) (GameInitialState {..}) = loop
               | k `S.member` _pressedKeys = v
               | otherwise = V3 0 0 0
 
-            fwd = moveKey KeycodeW (V3 0 1 0)
-            back = moveKey KeycodeS (V3 0 (-1) 0)
-            left = moveKey KeycodeA (V3 1 0 0)
-            right = moveKey KeycodeD (V3 (-1) 0 0)
+            fwd = moveKey KeycodeW (V3 0 0 1)
+            back = moveKey KeycodeS (V3 0 0 (-1))
+            left = moveKey KeycodeA (V3 (-1) 0 0)
+            right = moveKey KeycodeD (V3 1 0 0)
 
     updateLook st@(GameState {..}) =
-      st & camera %~ rotateEyes (mouseSensitivity * 2 *^ (fromIntegral <$> _movedMouse) / (fromIntegral <$> _frameSize))
+      st & camera %~ rotateEyes (mouseSensitivity *^ V2 2 (-2) * (fromIntegral <$> _movedMouse) / (fromIntegral <$> _frameSize))
          & movedMouse .~ V2 0 0
 
     doDraw (GameState {..}) = do

@@ -82,7 +82,7 @@ initMeshBuffer mesh = do
                     , indNumber = 3*(VS.length (indices mesh))
                     }
 
-drawMesh :: MeshBuffer -> Pipeline -> (M44 Float) -> DrawT IO ()
+drawMesh :: MeshBuffer -> Pipeline -> M44 Float -> DrawT IO ()
 drawMesh mesh pl mvM = do
         mvMloc <- getUniformLocation "modelViewMat" pl
         setUniform mvM mvMloc pl
