@@ -151,7 +151,9 @@ drawLoop w (GameSettings {..}) (GameInitialState {..}) = loop
       runDraws defaultDrawParams { pipeline = pl } $ do
         pMloc <- getUniformLocation "projectionMat" pl
         setUniform pM pMloc pl
-        drawMesh meshBuffer pl mvM
+        mvMloc <- getUniformLocation "modelViewMat" pl
+        setUniform mvM mvMloc pl
+        drawMesh meshBuffer pl
 
       runPendingFinalizers
       glSwapWindow w

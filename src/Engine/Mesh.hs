@@ -82,13 +82,11 @@ initMeshBuffer mesh = do
                     , indNumber = 3*(VS.length (indices mesh))
                     }
 
-drawMesh :: MeshBuffer -> Pipeline -> M44 Float -> DrawT IO ()
-drawMesh mesh pl mvM = do
-        mvMloc <- getUniformLocation "modelViewMat" pl
-        setUniform mvM mvMloc pl
-        drawR drawCommand { primitiveType = Triangles
-                          , primitivesVAO = (mvao mesh)
-                          , numIndices = (indNumber mesh)
-                          --, sourceData = Primitives 0
-                          , sourceData = PrimitivesWithIndices (mbuffer mesh) (indOffset mesh) IWord16
-                          }
+drawMesh :: MeshBuffer -> Pipeline -> DrawT IO ()
+drawMesh mesh pl =
+  drawR drawCommand { primitiveType = Triangles
+                    , primitivesVAO = (mvao mesh)
+                    , numIndices = (indNumber mesh)
+                    -- , sourceData = Primitives 0
+                    , sourceData = PrimitivesWithIndices (mbuffer mesh) (indOffset mesh) IWord16
+                    }
