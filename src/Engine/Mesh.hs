@@ -85,8 +85,8 @@ initMeshBuffer mesh = do
 drawMesh :: MeshBuffer -> Pipeline -> DrawT IO ()
 drawMesh mesh pl =
   drawR drawCommand { primitiveType = Triangles
-                    , primitivesVAO = (mvao mesh)
-                    , numIndices = (indNumber mesh)
+                    , primitivesVAO = mvao mesh
+                    , numIndices = indNumber mesh
                     -- , sourceData = Primitives 0
                     , sourceData = PrimitivesWithIndices (mbuffer mesh) (indOffset mesh) IWord16
                     }
