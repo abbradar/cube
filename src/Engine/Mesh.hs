@@ -17,7 +17,6 @@ import qualified Data.ByteString.Lazy as BL
 import Data.Attoparsec.ByteString.Lazy
 import Linear.V2
 import Linear.V3
-import Linear.Matrix
 import Graphics.Caramia
 
 import Data.Wavefront

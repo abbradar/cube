@@ -101,7 +101,7 @@ drawLoop w (GameSettings {..}) (GameInitialState {..}) = loop
   where
     loop st = do
       events <- pollEvents
-      let mst = foldl processEvent (Just st) events
+      let mst = foldl processEvent (Just st { _movedMouse = V2 0 0 }) events
       case mst of
         Nothing -> return ()
         Just st' -> do
@@ -138,7 +138,6 @@ drawLoop w (GameSettings {..}) (GameInitialState {..}) = loop
 
     updateLook st@(GameState {..}) =
       st & camera %~ rotateEyes (mouseSensitivity *^ V2 2 (-2) * (fromIntegral <$> _movedMouse) / (fromIntegral <$> _frameSize))
-         & movedMouse .~ V2 0 0
 
     doDraw (GameState {..}) = do
       let mvM = viewMatrix _camera
