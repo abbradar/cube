@@ -13,11 +13,11 @@ module Engine.Mesh
 import Foreign.Storable (Storable(..))
 import Data.Vector.Storable (Vector)
 import qualified Data.Vector.Storable as VS
-import qualified Data.ByteString.Lazy as BL
-import Data.Attoparsec.ByteString.Lazy
+import qualified Data.Scientific as S
+import Text.Trifecta.Parser (parseFromFile)
+import Graphics.Caramia
 import Linear.V2
 import Linear.V3
-import Graphics.Caramia
 
 import Data.Wavefront
 import Engine.Types
@@ -37,16 +37,19 @@ data Mesh = Mesh { vertices :: Vector Vert
 
 loadMesh :: FilePath -> IO Mesh
 loadMesh name = do
-  inp <- BL.readFile name
-  case parse parseOBJ inp of
-    Fail _ stack err -> fail $ "Error while parsing: " ++ show stack ++ ": " ++ err
-    Done _ r -> do
+  values <- parseFromFile wavefrontOBJ name
+  case values of
+    Nothing -> fail "loadMesh: failed to load mesh"
+    Just r -> do
       let WFModel{..} = extractModel r
-          indlist = wfIndices
---TODO: check different length
-          vertlist = zipWith V2 wfVertices wfNormals
+          indlist = map (fmap fromIntegral) wfIndices
+          --TODO: check different length
+          convertF = map (fmap S.toRealFloat)
+          vertlist = zipWith V2 (convertF wfVertices) (convertF wfNormals)
           --vertlist = zip wfVertices wfNormals
-      return Mesh { vertices = VS.fromList vertlist, indices = VS.fromList indlist }
+      return Mesh { vertices = VS.fromList vertlist
+                  , indices = VS.fromList indlist
+                  }
 
 data MeshBuffer = MeshBuffer { mvao :: VAO
                              , mbuffer :: Buffer

@@ -16,10 +16,13 @@ cabal-version:       >=1.10
 
 executable triangle
   main-is:             Main.hs
-  other-modules:       Data.Wavefront
+  other-modules:       Text.Parser.Comments
+                     , Data.Wavefront
                      , Engine.Mesh
                      , Engine.Camera
                      , Engine.Framerate
+                     , Engine.Types
+                     , Game.Types
   default-extensions:  OverloadedStrings
                      , ScopedTypeVariables
                      , TemplateHaskell
@@ -27,6 +30,10 @@ executable triangle
                      , RecordWildCards
                      , StandaloneDeriving
                      , DeriveGeneric
+                     , KindSignatures
+                     , DataKinds
+                     , GeneralizedNewtypeDeriving
+                     , RankNTypes
   build-depends:       base >=4.7
                      , text
                      , bytestring
@@ -38,9 +45,10 @@ executable triangle
                      , vector
                      , transformers
                      , containers
-                     , attoparsec
-                     , monad-loops
                      , interpolatedstring-perl6
+                     , scientific
+                     , trifecta
+                     , parsers
   hs-source-dirs:      src
   ghc-options:         -Wall -threaded
   default-language:    Haskell2010

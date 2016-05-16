@@ -1,55 +1,43 @@
 module Data.Wavefront
-       ( Wavefront(..)
-       , parseOBJ
+       ( WFValue(..)
+       , wavefrontOBJ
        , WFModel(..)
        , extractModel
        ) where
 
-import Control.Monad
 import Control.Applicative
-import Data.Word (Word16)
+import Data.Scientific (Scientific)
 import Data.Default
-import Data.ByteString (ByteString)
 import Linear.V3 (V3(..))
-import Data.Attoparsec.ByteString.Char8
+import Text.Parser.Combinators
+import Text.Parser.Token
 
-type F3 = V3 Float
-type I3 = V3 Word16
+import Text.Parser.Comments
 
-data Wavefront = WFVertex F3
-               | WFNormal F3
-               | WFFace I3
-               deriving (Show, Eq)
+type F3 = V3 Scientific
+type I3 = V3 Integer
 
-float :: Parser Float
-float = fromRational <$> toRational <$> double
+data WFValue = WFVertex F3
+             | WFNormal F3
+             | WFFace I3
+             deriving (Show, Eq)
 
-objSpace :: Parser ()
-objSpace = skipWhile (== ' ')
+type OBJParser a = forall m. (Monad m, TokenParsing m) => LineCommentT "#" m a
 
-objFloat :: Parser Float
-objFloat = objSpace *> float
+number :: OBJParser Scientific
+number = either fromIntegral id <$> integerOrScientific
 
-objWord :: Parser Word16
-objWord = objSpace *> decimal
+pointF3 :: OBJParser F3
+pointF3 = V3 <$> number <*> number <*> number <?> "3-point"
 
-pointF3 :: Parser F3
-pointF3 = V3 <$> objFloat <*> objFloat <*> objFloat
+pointI3 :: OBJParser I3
+pointI3 = V3 <$> natural <*> natural <*> natural <?> "3-index vector"
 
-pointI3 :: Parser I3
-pointI3 = V3 <$> objWord <*> objWord <*> objWord
-
-skipComments :: Parser ()
-skipComments = skipSpace <* optional (char '#' >> skipWhile (/= '\n') >> skipComments)
-
-prefix :: ByteString -> Parser ()
-prefix s = void $ string s *> char ' '
-
-parseOBJ :: Parser [Wavefront]
-parseOBJ = many (skipComments *> line) <* skipSpace <* endOfInput
-  where line =     WFVertex <$> (prefix "v" *> pointF3)
-               <|> WFNormal <$> (prefix "vn" *> pointF3)
-               <|> WFFace <$> (prefix "f" *> pointI3)
+wavefrontOBJ :: (Monad m, TokenParsing m) => m [WFValue]
+wavefrontOBJ = runLineCommentT $ optional someSpace *> many line <* eof
+  where line =     WFNormal <$> (symbol "vn" *> pointF3 <?> "normal")
+               <|> WFVertex <$> (symbol "v" *> pointF3 <?> "vertex")
+               <|> WFFace <$> (symbol "f" *> pointI3 <?> "face")
 
 data WFModel = WFModel { wfNormals :: [F3]
                        , wfVertices :: [F3]
@@ -64,7 +52,7 @@ instance Default WFModel where
                 , wfIndices = []
                 }
 
-extractModel :: [Wavefront] -> WFModel
+extractModel :: [WFValue] -> WFModel
 extractModel [] = def
 extractModel (h:t) = case h of
   WFVertex a -> m { wfVertices = a : wfVertices }
