@@ -14,6 +14,7 @@ import Foreign.Storable (Storable(..))
 import Data.Vector.Storable (Vector)
 import qualified Data.Vector.Storable as VS
 import qualified Data.ByteString.Lazy as BL
+import Data.Attoparsec.ByteString.Lazy
 import Linear.V2
 import Linear.V3
 import Graphics.Caramia
@@ -37,9 +38,9 @@ data Mesh = Mesh { vertices :: Vector Vert
 loadMesh :: FilePath -> IO Mesh
 loadMesh name = do
   inp <- BL.readFile name
-  case parseOBJ inp of
-    Left err -> fail $ "Error while parsing: " ++ err
-    Right r -> do
+  case parse parseOBJ inp of
+    Fail _ stack err -> fail $ "Error while parsing: " ++ show stack ++ ": " ++ err
+    Done _ r -> do
       let WFModel{..} = extractModel r
           indlist = wfIndices
 --TODO: check different length

@@ -17,8 +17,6 @@ cabal-version:       >=1.10
 executable triangle
   main-is:             Main.hs
   other-modules:       Data.Wavefront
-                     , Data.Wavefront.Lexer
-                     , Data.Wavefront.Parser
                      , Engine.Mesh
                      , Engine.Camera
                      , Engine.Framerate
@@ -40,12 +38,9 @@ executable triangle
                      , vector
                      , transformers
                      , containers
+                     , attoparsec
+                     , monad-loops
                      , interpolatedstring-perl6
-                     , uuid-types
-                     , scientific
-                     , array
-  build-tools:         alex
-                     , happy
   hs-source-dirs:      src
   ghc-options:         -Wall -threaded
   default-language:    Haskell2010
