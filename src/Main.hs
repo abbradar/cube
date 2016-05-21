@@ -2,6 +2,7 @@ import Data.Int
 import Data.Word
 import System.Environment
 import qualified Data.Map as M
+import Data.Set (Set)
 import qualified Data.Set as S
 import Data.Default
 import Linear
@@ -9,26 +10,38 @@ import Text.InterpolatedString.Perl6 (q)
 import Control.Lens
 import Graphics.Caramia as Car hiding (normalize)
 import SDL
+import Text.Trifecta (parseFromFile)
 
 import Engine.Mesh
 import Engine.Camera
 import Engine.Framerate
-import Game.Types
+import Data.DirectX
 
 import Debug.Trace
 
-data GameSettings = GameSettings { meshPath :: FilePath
-                                 , intervalTime :: Word32
+data GameSettings = GameSettings { intervalTime :: Word32
                                  , initialSize :: V2 Int32
                                  , movementSpeed :: Float
                                  , mouseSensitivity :: Float
+                                 , xTemplatesPath :: FilePath
+                                 , meshPath :: FilePath
                                  }
                   deriving (Show, Read, Eq)
 
 data GameInitialState = GameInitialState { pl :: Pipeline
                                          , meshBuffer :: MeshBuffer
                                          , fpsLimit :: FPSLimit
+                                         , xDataTemplates :: XTemplates
                                          }
+
+data GameState = GameState { _camera :: Camera
+                           , _pressedKeys :: Set Keycode
+                           , _movedMouse :: V2 Int32
+                           , _frameSize :: V2 Int32
+                           , _frameTime :: Word32
+                           }
+
+$(makeLenses ''GameState)
 
 main :: IO ()
 main = do
@@ -37,6 +50,12 @@ main = do
         [] -> "data/game.cfg"
         path:_ -> path
   settings@(GameSettings {..}) <- read <$> readFile settingsPath
+
+  xDataTemplates <- do
+    r <- parseFromFile directX xTemplatesPath
+    case r of
+      Nothing -> fail "cannot load X templates"
+      Just r' -> return $ xTemplates r'
 
   initialize [InitVideo, InitEvents]
 
@@ -49,7 +68,7 @@ main = do
   giveContext $ do
     pl <- newPipelineVF vxsource fgsource M.empty
 
-    mesh <- loadMesh meshPath
+    mesh <- loadMeshOBJ meshPath
     meshBuffer <- initMeshBuffer mesh
     fpsLimit <- newFPSLimit
  

@@ -4,7 +4,8 @@ module Engine.Mesh
        , Mesh
        , vertices
        , indices
-       , loadMesh
+       , loadMeshOBJ
+       , loadMeshX
        , MeshBuffer
        , initMeshBuffer
        , drawMesh
@@ -20,6 +21,7 @@ import Linear.V2
 import Linear.V3
 
 import Data.Wavefront
+import Data.DirectX
 import Engine.Types
 
 --import Debug.Trace
@@ -35,8 +37,8 @@ data Mesh = Mesh { vertices :: Vector Vert
                  , indices :: Vector Ind
                  } 
 
-loadMesh :: FilePath -> IO Mesh
-loadMesh name = do
+loadMeshOBJ :: FilePath -> IO Mesh
+loadMeshOBJ name = do
   values <- parseFromFile wavefrontOBJ name
   case values of
     Nothing -> fail "loadMesh: failed to load mesh"
@@ -50,6 +52,9 @@ loadMesh name = do
       return Mesh { vertices = VS.fromList vertlist
                   , indices = VS.fromList indlist
                   }
+
+loadMeshX :: XTemplates -> FilePath -> IO Mesh
+loadMeshX tmpls name = undefined
 
 data MeshBuffer = MeshBuffer { mvao :: VAO
                              , mbuffer :: Buffer

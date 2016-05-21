@@ -7,6 +7,7 @@ import Data.Proxy
 import Control.Applicative
 import Control.Monad
 import GHC.TypeLits
+import qualified Data.Text as T
 import Text.Parser.Combinators
 import Text.Parser.Char
 import Text.Parser.Token
@@ -22,9 +23,12 @@ newtype LineCommentT (start :: Symbol) m a =
            , Alternative, Parsing, CharParsing
            )
 
+symbolP :: (KnownSymbol sym, CharParsing m) => Proxy sym -> m ()
+symbolP = void . try . text . T.pack . symbolVal
+
 instance (KnownSymbol start, TokenParsing m) => TokenParsing (LineCommentT start m) where
   someSpace = LineCommentT $ skipComment comment
-    where comment = try (string $ symbolVal (Proxy :: Proxy start))
+    where comment = symbolP (Proxy :: Proxy start)
                     *> manyTill anyChar (void (char '\n') <|> eof)
 
   nesting = LineCommentT . nesting . runLineCommentT
@@ -40,8 +44,8 @@ newtype BlockCommentT (start :: Symbol) (end :: Symbol) m a =
 
 instance (TokenParsing m, KnownSymbol start, KnownSymbol end) => TokenParsing (BlockCommentT start end m) where
   someSpace = BlockCommentT $ skipComment comment
-    where comment = try (string $ symbolVal (Proxy :: Proxy start))
-                    *> manyTill anyChar (try $ string $ symbolVal (Proxy :: Proxy end))
+    where comment = symbolP (Proxy :: Proxy start)
+                    *> manyTill anyChar (symbolP (Proxy :: Proxy end))
 
   nesting = BlockCommentT . nesting . runBlockCommentT
   semi = BlockCommentT semi
