@@ -79,13 +79,15 @@ main = do
   giveContext $ do
     vxsource <- T.readFile $ shaderPath <> ".vs"
     fgsource <- T.readFile $ shaderPath <> ".fs"
-    pl <- handle (\(ShaderCompilationError msg) -> T.putStrLn msg >> fail "shader compilation error") $ newPipelineVF vxsource fgsource M.empty
+    pl <- handle (\(ShaderCompilationError msg) -> T.putStrLn msg >> fail "shader compilation error") $
+          newPipelineVF vxsource fgsource M.empty
 
     mesh <- loadMeshOBJ meshPath
     meshBuffer <- initMeshBuffer mesh
     let light = DirectionalLight { lcolor = V3 0.7 0.7 0.7
-                             , ldirection = V3 (-0.69) (-0.69) (-0.69)
-                             , lambient = 0.6 }
+                                 , ldirection = V3 (-0.69) (-0.69) (-0.69)
+                                 , lambient = 0.6
+                                 }
     fpsLimit <- newFPSLimit
  
     let initialState = GameInitialState {..}
@@ -169,6 +171,6 @@ drawLoop w (GameSettings {..}) (GameInitialState {..}) = loop
         lightiloc <- getUniformLocation "sunLight.ambient" pl
         setUniform (lambient light) lightiloc pl
         drawMesh meshBuffer pl
-        
+
       runPendingFinalizers
       glSwapWindow w

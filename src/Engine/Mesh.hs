@@ -41,7 +41,7 @@ loadMeshOBJ :: FilePath -> IO Mesh
 loadMeshOBJ name = do
   values <- parseFromFile wavefrontOBJ name
   case values of
-    Nothing -> fail "loadMesh: failed to load mesh"
+    Nothing -> fail "loadMeshOBJ: failed to load mesh"
     Just r -> do
       let WFModel{..} = extractModel r
           indlist = map (fmap fromIntegral) wfIndices
