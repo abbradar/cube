@@ -6,6 +6,7 @@ module Data.Wavefront
        ) where
 
 import Control.Applicative
+import GHC.Generics (Generic)
 import Data.Scientific (Scientific)
 import Data.Default
 import Linear.V3 (V3(..))
@@ -43,14 +44,9 @@ data WFModel = WFModel { wfNormals :: [F3]
                        , wfVertices :: [F3]
                        , wfIndices :: [I3]
                        }
-             deriving (Show, Eq)
+             deriving (Show, Eq, Generic)
 
--- FIXME: replace when data-default-class is updated on Hackage
 instance Default WFModel where
-  def = WFModel { wfNormals = []
-                , wfVertices = []
-                , wfIndices = []
-                }
 
 extractModel :: [WFValue] -> WFModel
 extractModel [] = def
