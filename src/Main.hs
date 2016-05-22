@@ -8,7 +8,6 @@ import Data.Set (Set)
 import qualified Data.Set as S
 import Data.Default
 import Linear
-import Text.InterpolatedString.Perl6 (q)
 import Control.Lens
 import Control.Exception (handle)
 import Graphics.Caramia as Car hiding (normalize)
