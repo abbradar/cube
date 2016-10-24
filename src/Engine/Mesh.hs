@@ -67,8 +67,12 @@ loadFrameX tmpls path = do
     Just r -> do
       let frame = do
             -- XXX: ignores all frames except the first one
-            f <- listToMaybe $ filter (\x -> dataTemplate x == "Frame") $ xData r
-            loadFrameTree f
+            fs <- mapM loadFrameTree $ filter (\x -> dataTemplate x == "Frame") $ xData r
+            let root = Frame { fmesh = Nothing
+                             , fname = Nothing
+                             , ftransform = identity
+                             }
+            return $ Node root fs
       case frame of
         Nothing -> fail "cannot find frames"
         Just f -> return f
