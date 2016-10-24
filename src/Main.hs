@@ -83,7 +83,6 @@ main = do
     pl <- handle (\(ShaderCompilationError msg) -> T.putStrLn msg >> fail "shader compilation error") $ newPipelineVF vxsource fgsource M.empty
     -- .X files
     fr <- loadFrameX xDataTemplates "data/xobjects/lzom.x"
-    traceShowM fr
     object <- mapM initFrameBuffer fr
     --light
     let light = DirectionalLight { lcolor = V3 0.7 0.7 0.7

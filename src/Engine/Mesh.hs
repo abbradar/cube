@@ -86,7 +86,7 @@ loadFrameTree dt
   | otherwise = Nothing
   where
       fname = fromDName <$> dataName dt
-    -- if fails to find one, sets to identity
+      -- if fails to find one, sets to identity
       ftransform = getMatrix $ searchFieldT "FrameTransformMatrix" (dataChildren dt)
       fchildren = loadFrameTrees $ dataChildren dt
       fmesh = searchFieldT "Mesh" (dataChildren dt) >>= loadMesh
@@ -96,7 +96,7 @@ getMatrix Nothing = identity
 getMatrix (Just d) = fromMaybe (error "invalid transform matrix") $ do
     VCustom (DV data1) <- M.lookup "frameMatrix" (dataValues d)
     VFloat (DA vals) <- M.lookup "matrix" data1
-    let a11:a12:a13:a14:a21:a22:a23:a24:a31:a32:a33:a34:a41:a42:a43:a44:[] = vals
+    let [a11,a12,a13,a14,a21,a22,a23,a24,a31,a32,a33,a34,a41,a42,a43,a44] = vals
     return  $ V4 (V4 a11 a12 a13 a14) (V4 a21 a22 a23 a24) (V4 a31 a32 a33 a34) (V4 a41 a42 a43 a44)
 
 unMonad :: Monad m => String -> Maybe a -> m a
@@ -119,21 +119,18 @@ loadMesh dt = do
           VFloat (DV x1) <- M.lookup "x" x 
           VFloat (DV y1) <- M.lookup "y" x 
           VFloat (DV z1) <- M.lookup "z" x 
-          return (V3  x1 y1 z1)
+          return (V3 x1 y1 z1)
         verts = map verts1 vertices
     --normals
     let dtn = searchFieldT "MeshNormals" (dataChildren dt)
     dtn1 <- unMonad "no normals data found" dtn
     VCustom (DA normals) <- M.lookup "normals" (dataValues dtn1)
-    let norms1 x = fromMaybe (V3 0 0 0) $ do
-          VFloat (DV x1) <- M.lookup "x" x 
-          VFloat (DV y1) <- M.lookup "y" x 
-          VFloat (DV z1) <- M.lookup "z" x 
-          return (V3 x1 y1 z1)
-        norms = map norms1 normals
+    let norms = map verts1 normals
     -- gluing together
-    let indlist = map (\[a, b, c]->(V3 (fromIntegral a) (fromIntegral b) (fromIntegral c))) inds
-        vertlist = zipWith V2 verts norms
+    indlist <- forM inds $ \case
+      [a, b, c] -> return (fromIntegral <$> V3 a b c)
+      _ -> Nothing
+    let vertlist = zipWith V2 verts norms
     return Mesh { vertices = VS.fromList vertlist, indices = VS.fromList indlist }
 
 loadFrameTrees :: [Data] -> [Tree Frame]
@@ -145,7 +142,7 @@ loadMeshOBJ path = do
   case vals of
     Nothing -> fail "loadMeshOBJ: failed to load mesh"
     Just r -> do
-      let WFModel{..} = extractModel r
+      let WFModel {..} = extractModel r
           indlist = map (fmap fromIntegral) wfIndices
           --TODO: check different length
           convertF = map (fmap S.toRealFloat)
@@ -188,7 +185,7 @@ initMeshBuffer mesh = do
   return MeshBuffer { mvao = vao
                     , mbuffer = buff
                     , indOffset = sizeOfV (vertices mesh)
-                    , indNumber = 3*(VS.length (indices mesh))
+                    , indNumber = 3 * VS.length (indices mesh)
                     }
 
 drawMesh :: MeshBuffer -> Pipeline -> DrawT IO ()
@@ -211,5 +208,5 @@ drawFrame (Node fbuf fbchildren) loc mvM pl = do
   unless (isNothing (fbuffer fbuf)) $ drawMesh mb pl
   mapM_ drawFrameA fbchildren
   where drawFrameA x = drawFrame x loc nmvM pl
-        nmvM = (ftransform (fframe fbuf)) !*! mvM
+        nmvM = ftransform (fframe fbuf) !*! mvM
         (Just mb) = fbuffer fbuf
