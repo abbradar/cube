@@ -157,10 +157,13 @@ drawLoop w (GameSettings {..}) (GameInitialState {..}) = loop
 
       -- print (_eye _camera, _rotation _camera)
       -- FIXME: set viewpoint size according to window size
-      Car.clear clearing { clearColor = Just $ rgba 0.4 0.4 0.4 1.0
+      Car.clear clearing { clearDepth = Just 1.0
+                         , clearColor = Just $ rgba 0.4 0.4 0.4 1.0
                          } screenFramebuffer
       -- start drawing
       runDraws defaultDrawParams { pipeline = pl } $ do
+        -- depth
+        setFragmentPassTests defaultFragmentPassTests { depthTest = Just Less }
         -- set matrices
         pMloc <- getUniformLocation "projectionMat" pl
         setUniform pM pMloc pl
