@@ -9,7 +9,7 @@ import Engine.Types
 import Debug.Trace
 
 critAngleTan :: Float
-critAngleTan = 12.0
+critAngleTan = 9.0
 
 data Camera = Camera { _eye :: F3
                      , _lookat :: F3
@@ -40,7 +40,7 @@ viewMatrix (Camera {..}) = transpose $ lookAt _eye _lookat (V3 0.0 0.0 1.0)
     
 
 moveEyes :: F3 -> Camera -> Camera
-moveEyes vec cam@(Camera {..}) = cam { _eye = _eye + vec, _lookat = _lookat + vec }
+moveEyes vec cam@(Camera {..}) = cam { _eye = (_eye + vec), _lookat = (_lookat + vec) }
 
 -- Expects relative move of the mouse in range [-1; 1]
 rotateEyes :: F2 -> Camera -> Camera
@@ -49,7 +49,7 @@ rotateEyes rel@(V2 x y) cam@(Camera {..})
   | otherwise = cam { _eye = _lookat + rotation !* radius }
   where upvect = (V3 0.0 0.0 1.0)
         radius = _eye - _lookat
-        slope (V3 xv yv zv) = zv*zv/(xv*xv + yv*yv)
+        slope (V3 xv yv zv) = zv**2/(xv**2 + yv**2)
         ynew 
           | (slope radius > critAngleTan) && (y * (radius ^. _z) < 0) = 0
           | otherwise = y

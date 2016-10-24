@@ -15,5 +15,5 @@ uniform DirectionalLight sunLight;
 void main()
 {
   float diffuseint = max(0.0, dot(normalize(onorm),  -sunLight.direction));
-  color = vec4(vec3(0.0, 1.0, 0.0)*(sunLight.ambient*sunLight.color + diffuseint), 1.0);
+  color = vec4(vec3(0.2, 0.2, 0.8)*(sunLight.ambient*sunLight.color + diffuseint), 1.0);
 }

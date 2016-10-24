@@ -13,6 +13,7 @@ import qualified Data.CaseInsensitive as CI
 import Data.Map (Map)
 import Data.Set (Set)
 import qualified Data.CharSet as CS
+import qualified Data.String as DS
 import Data.UUID.Types (UUID)
 import qualified Data.UUID.Types as U
 import Control.Monad.Trans.State
@@ -44,11 +45,11 @@ type XParserT m = StateT (ParserState m) m
 
 -- Type name
 newtype TName = TName ByteString
-              deriving (Show, Eq, Ord)
+              deriving (Show, Eq, Ord, DS.IsString)
 
 -- Member name
 newtype MName = MName ByteString
-              deriving (Show, Eq, Ord)
+              deriving (Show, Eq, Ord, DS.IsString)
 
 data ValueType = Word
                | DWord

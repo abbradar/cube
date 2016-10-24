@@ -9,6 +9,7 @@ import Control.Monad
 import Data.ByteString (ByteString)
 import qualified Data.Map as M
 import qualified Data.Set as S
+import qualified Data.String as DS
 import Data.UUID.Types (UUID)
 import Control.Monad.Trans.State
 import Text.Parser.Combinators
@@ -17,8 +18,8 @@ import Text.Parser.Token
 import Data.DirectX.Core
 
 -- Data name
-newtype DName = DName ByteString
-              deriving (Show, Eq, Ord)
+newtype DName = DName {fromDName :: ByteString}
+              deriving (Show, Eq, Ord, DS.IsString)
 
 data Data = Data { dataTemplate :: TName
                  , dataName :: Maybe DName

@@ -39,6 +39,7 @@ data DirectionalLight = DirectionalLight { lcolor :: V3 Float
 
 data GameInitialState = GameInitialState { pl :: Pipeline
                                          , meshBuffer :: MeshBuffer
+                                         , object :: FrameBuffers
                                          , light :: DirectionalLight
                                          , fpsLimit :: FPSLimit
                                          , xDataTemplates :: XTemplates
@@ -79,15 +80,19 @@ main = do
   giveContext $ do
     vxsource <- T.readFile $ shaderPath <> ".vs"
     fgsource <- T.readFile $ shaderPath <> ".fs"
-    pl <- handle (\(ShaderCompilationError msg) -> T.putStrLn msg >> fail "shader compilation error") $
-          newPipelineVF vxsource fgsource M.empty
-
+    pl <- handle (\(ShaderCompilationError msg) -> T.putStrLn msg >> fail "shader compilation error") $ newPipelineVF vxsource fgsource M.empty
+    -- .obj file
     mesh <- loadMeshOBJ meshPath
     meshBuffer <- initMeshBuffer mesh
+    -- .X files
+    fr <- loadFrameX xDataTemplates "data/xobjects/lzom.x"
+    traceShowM fr
+    object <- initFrame fr
+    --light
     let light = DirectionalLight { lcolor = V3 0.7 0.7 0.7
-                                 , ldirection = V3 (-0.69) (-0.69) (-0.69)
-                                 , lambient = 0.6
-                                 }
+
+                             , ldirection = V3 (-0.42) (-0.57) (-0.71)
+                             , lambient = 0.6 }
     fpsLimit <- newFPSLimit
  
     let initialState = GameInitialState {..}
@@ -142,8 +147,8 @@ drawLoop w (GameSettings {..}) (GameInitialState {..}) = loop
               | k `S.member` _pressedKeys = v
               | otherwise = V3 0 0 0
 
-            fwd = moveKey KeycodeW (V3 0 0 1)
-            back = moveKey KeycodeS (V3 0 0 (-1))
+            fwd = moveKey KeycodeW (V3 0 1 0)
+            back = moveKey KeycodeS (V3 0 (-1) 0)
             left = moveKey KeycodeA (V3 (-1) 0 0)
             right = moveKey KeycodeD (V3 1 0 0)
 
@@ -158,7 +163,9 @@ drawLoop w (GameSettings {..}) (GameInitialState {..}) = loop
       -- FIXME: set viewpoint size according to window size
       Car.clear clearing { clearColor = Just $ rgba 0.4 0.4 0.4 1.0
                          } screenFramebuffer
+      -- start drawing
       runDraws defaultDrawParams { pipeline = pl } $ do
+        -- set matrices
         pMloc <- getUniformLocation "projectionMat" pl
         setUniform pM pMloc pl
         mvMloc <- getUniformLocation "modelViewMat" pl
@@ -170,7 +177,9 @@ drawLoop w (GameSettings {..}) (GameInitialState {..}) = loop
         setUniform (ldirection light) lightdloc pl
         lightiloc <- getUniformLocation "sunLight.ambient" pl
         setUniform (lambient light) lightiloc pl
+        -- meshes
         drawMesh meshBuffer pl
-
+        drawFrame object identity pl
+        
       runPendingFinalizers
       glSwapWindow w
