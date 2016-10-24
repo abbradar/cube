@@ -86,7 +86,7 @@ main = do
     mesh <- loadMeshOBJ meshPath
     meshBuffer <- initMeshBuffer mesh
     -- .X files
-    fr <- loadFrameX xDataTemplates "data/xobjects/cube1.x"
+    fr <- loadFrameX xDataTemplates "data/xobjects/lzom.x"
     traceShowM fr
     object <- mapM initFrameBuffer fr
     --light

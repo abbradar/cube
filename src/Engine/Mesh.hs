@@ -65,17 +65,19 @@ loadFrameX tmpls path = do
   case vals of
     Nothing -> fail $ "loadMesh: failed to load " ++ path
     Just r -> do
-    -- WARNING: ignores all frames except the first one
-      let frame = loadFrameTree $ head $ xData $ r
-        in case frame of
-          Nothing -> fail "cannot find frames"
-          Just f -> return f
+      let frame = do
+            -- XXX: ignores all frames except the first one
+            f <- listToMaybe $ filter (\x -> dataTemplate x == "Frame") $ xData r
+            loadFrameTree f
+      case frame of
+        Nothing -> fail "cannot find frames"
+        Just f -> return f
 
 -- searches in the list of data an element with coinciding template
 searchFieldT :: ByteString -> [Data] -> Maybe Data
 searchFieldT _ [] = Nothing
 searchFieldT nm (dt:dts)
-  | dataTemplate dt /= (TName nm) = searchFieldT nm dts
+  | dataTemplate dt /= TName nm = searchFieldT nm dts
   | otherwise = Just dt
 
 loadFrameTree :: Data -> Maybe (Tree Frame)
