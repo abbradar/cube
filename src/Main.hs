@@ -4,6 +4,7 @@ import Data.Monoid
 import qualified Data.Text.IO as T
 import System.Environment
 import qualified Data.Map as M
+import Data.Tree (Tree)
 import Data.Set (Set)
 import qualified Data.Set as S
 import Data.Default
@@ -39,7 +40,7 @@ data DirectionalLight = DirectionalLight { lcolor :: V3 Float
 
 data GameInitialState = GameInitialState { pl :: Pipeline
                                          , meshBuffer :: MeshBuffer
-                                         , object :: FrameBuffers
+                                         , object :: Tree FrameBuffer
                                          , light :: DirectionalLight
                                          , fpsLimit :: FPSLimit
                                          , xDataTemplates :: XTemplates
@@ -85,9 +86,9 @@ main = do
     mesh <- loadMeshOBJ meshPath
     meshBuffer <- initMeshBuffer mesh
     -- .X files
-    fr <- loadFrameX xDataTemplates "data/xobjects/cube2.x"
+    fr <- loadFrameX xDataTemplates "data/xobjects/cube1.x"
     traceShowM fr
-    object <- initFrame fr
+    object <- mapM initFrameBuffer fr
     --light
     let light = DirectionalLight { lcolor = V3 0.7 0.7 0.7
                                  , ldirection = V3 (-0.42) (-0.57) (-0.71)

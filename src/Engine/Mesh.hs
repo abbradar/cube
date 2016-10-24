@@ -3,7 +3,7 @@ module Engine.Mesh
        , Ind
        , Mesh
        , Frame
-       , FrameBuffers
+       , FrameBuffer
        , vertices
        , indices
        , loadMeshOBJ
@@ -11,7 +11,7 @@ module Engine.Mesh
        , MeshBuffer
        , initMeshBuffer
        , drawMesh
-       , initFrame
+       , initFrameBuffer
        , drawFrame
        ) where
 
@@ -34,7 +34,7 @@ import Data.Wavefront
 import Data.DirectX
 import Data.DirectX.Data
 import Data.DirectX.Core
-import Data.Tree
+import Data.Tree (Tree(..))
 import Engine.Types
 
 import Debug.Trace
@@ -53,22 +53,20 @@ data Mesh = Mesh { vertices :: Vector Vert
 data Frame = Frame { fmesh :: Maybe Mesh
                    , fname :: Maybe ByteString
                    , ftransform :: MF44
-                   , fchildren :: [Frame]
                    } deriving (Show, Eq, Read)
 
-data FrameBuffers = FrameBuffers { fframe :: Frame
-                  , fbuffer :: Maybe MeshBuffer
-                  , fbchildren :: [FrameBuffers]
-                  }
+data FrameBuffer = FrameBuffer { fframe :: Frame
+                               , fbuffer :: Maybe MeshBuffer
+                               }
 
-loadFrameX :: XTemplates -> FilePath -> IO Frame
-loadFrameX tmpls name = do
-  values <- parseFromFile (directX' tmpls) name
-  case values of
-    Nothing -> fail $ "loadMesh: failed to load " ++ name
+loadFrameX :: XTemplates -> FilePath -> IO (Tree Frame)
+loadFrameX tmpls path = do
+  vals <- parseFromFile (directX' tmpls) path
+  case vals of
+    Nothing -> fail $ "loadMesh: failed to load " ++ path
     Just r -> do
     -- WARNING: ignores all frames except the first one
-      let frame = loadFrame $ head $ xData $ r
+      let frame = loadFrameTree $ head $ xData $ r
         in case frame of
           Nothing -> fail "cannot find frames"
           Just f -> return f
@@ -80,17 +78,16 @@ searchFieldT nm (dt:dts)
   | dataTemplate dt /= (TName nm) = searchFieldT nm dts
   | otherwise = Just dt
 
-loadFrame :: Data -> Maybe Frame
-loadFrame dt
-  | dataTemplate dt == "Frame" = Just Frame{..}
+loadFrameTree :: Data -> Maybe (Tree Frame)
+loadFrameTree dt
+  | dataTemplate dt == "Frame" = Just $ Node (Frame {..}) fchildren
   | otherwise = Nothing
   where
       fname = fromDName <$> dataName dt
     -- if fails to find one, sets to identity
       ftransform = getMatrix $ searchFieldT "FrameTransformMatrix" (dataChildren dt)
-      fchildren = loadFrames (dataChildren dt)
-      fmesh = loadMesh $ searchFieldT "Mesh" (dataChildren dt)
-      fbuffer = Nothing
+      fchildren = loadFrameTrees $ dataChildren dt
+      fmesh = searchFieldT "Mesh" (dataChildren dt) >>= loadMesh
 
 getMatrix :: Maybe Data -> MF44
 getMatrix Nothing = identity
@@ -106,9 +103,8 @@ unMonad _ (Just a) = return a
 
 -- load Mesh with 3-indexed faces and vertex normals
 -- all incorrect vertexes become (0 0 0)
-loadMesh :: Maybe Data -> Maybe Mesh
-loadMesh Nothing = Nothing
-loadMesh (Just dt) = do
+loadMesh :: Data -> Maybe Mesh
+loadMesh dt = do
     --faces
     VCustom (DA faces) <- M.lookup "faces" (dataValues dt)
     let inds1 x = fromMaybe [] $ do
@@ -138,13 +134,13 @@ loadMesh (Just dt) = do
         vertlist = zipWith V2 verts norms
     return Mesh { vertices = VS.fromList vertlist, indices = VS.fromList indlist }
 
-loadFrames :: [Data] -> [Frame]
-loadFrames dtl = mapMaybe loadFrame dtl
+loadFrameTrees :: [Data] -> [Tree Frame]
+loadFrameTrees dtl = mapMaybe loadFrameTree dtl
 
 loadMeshOBJ :: FilePath -> IO Mesh
-loadMeshOBJ name = do
-  values <- parseFromFile wavefrontOBJ name
-  case values of
+loadMeshOBJ path = do
+  vals <- parseFromFile wavefrontOBJ path
+  case vals of
     Nothing -> fail "loadMeshOBJ: failed to load mesh"
     Just r -> do
       let WFModel{..} = extractModel r
@@ -162,8 +158,9 @@ data MeshBuffer = MeshBuffer { mvao :: VAO
                              , indOffset :: Int
                              , indNumber :: Int
                              } 
+
 instance Show MeshBuffer where
-  show buf = "mesh buffer"
+  show buf = "MeshBuffer"
 
 initMeshBuffer :: Mesh -> IO MeshBuffer
 initMeshBuffer mesh = do
@@ -201,17 +198,16 @@ drawMesh mesh pl =
                     , sourceData = PrimitivesWithIndices (mbuffer mesh) (indOffset mesh) IWord16
                     }
 
-initFrame :: Frame -> IO FrameBuffers
-initFrame frame = do
+initFrameBuffer :: Frame -> IO FrameBuffer
+initFrameBuffer frame = do
   mbuf <- mapM initMeshBuffer (fmesh frame)
-  chldrn <- mapM initFrame (fchildren frame)
-  return FrameBuffers{ fframe = frame, fbuffer = mbuf, fbchildren = chldrn }
+  return FrameBuffer { fframe = frame, fbuffer = mbuf }
 
-drawFrame :: FrameBuffers -> UniformLocation -> MF44 -> Pipeline -> DrawT IO ()
-drawFrame fbuf loc mvM pl = do
+drawFrame :: Tree FrameBuffer -> UniformLocation -> MF44 -> Pipeline -> DrawT IO ()
+drawFrame (Node fbuf fbchildren) loc mvM pl = do
   setUniform nmvM loc pl
   unless (isNothing (fbuffer fbuf)) $ drawMesh mb pl
-  mapM_ drawFrameA (fbchildren fbuf)
+  mapM_ drawFrameA fbchildren
   where drawFrameA x = drawFrame x loc nmvM pl
         nmvM = (ftransform (fframe fbuf)) !*! mvM
         (Just mb) = fbuffer fbuf
