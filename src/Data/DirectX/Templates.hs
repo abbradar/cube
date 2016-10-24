@@ -15,6 +15,7 @@ import Text.Parser.Combinators
 import Text.Parser.Token
 
 import Data.DirectX.Core
+import Data.DirectX.Data
 
 type XTParser a = forall m. XParsing m => StateT (Map MName Type) (XParserT m) a
 
@@ -25,7 +26,7 @@ name' :: XTParser ByteString
 name' = lift name
 
 valueType :: XTParser ValueType
-valueType = foldr ((<|>) . ts) mzero
+valueType = foldr ((<|>) . tryName) mzero
         [ ("WORD", Word)
         , ("DWORD", DWord)
         , ("FLOAT", Float)
@@ -35,9 +36,15 @@ valueType = foldr ((<|>) . ts) mzero
         , ("BYTE", Byte)
         , ("STRING", String)
         ]
-        <|> (Custom <$> TName <$> name')
+        <|> custom
         <?> "value type"
-  where ts (s, t) = try (t <$ ciSymbol s)
+  where tryName (s, t) = try $ t <$ ciSymbol s
+
+        custom = do
+          tn <- TName <$> name'
+          ds <- lift get
+          unless (tn `M.member` dxTemplates ds) $ fail "valueType: unknown type name"
+          return $ Custom tn
 
 refDimension :: XTParser MName
 refDimension = do
@@ -54,8 +61,8 @@ refDimension = do
   return n
 
 dimension :: XTParser Dimension
-dimension = brackets $     (Const <$> fromIntegral <$> natural)
-                       <|> (Ref <$> refDimension)
+dimension = brackets $     (DConst <$> fromIntegral <$> natural)
+                       <|> (DRef <$> refDimension)
             <?> "dimension"
 
 arrayMember :: XTParser (Type, MName)
@@ -83,13 +90,15 @@ member = do
   return r
   <?> "member"
 
--- XXX: this ignores GUID
 restrictedName :: XTParser TName
 restrictedName = do
-  n <- TName <$> name' <* optional guid'
+  n <- TName <$> name'
+  uid <- optional guid'
   tns <- lift get
-  unless (n `M.member` templates tns) $ fail "restrictedName: reference to an unknown template name"
-  return n
+  case (M.lookup n (dxTemplates tns), uid) of
+    (Nothing, _) -> fail "restrictedName: reference to an unknown template name"
+    (Just (t, _), Just myid) | typeGuid t /= myid -> fail "restrictedName: inconsistent GUID"
+    _ -> return n
 
 restriction :: XTParser Restriction
 restriction = brackets ((Opened <$ textSymbol "...") <|> (Restricted <$> S.fromList <$> commaSep1 restrictedName))
@@ -100,9 +109,18 @@ template :: XParsing m => XParserT m (TName, TemplateData)
 template = do
   _ <- try $ textSymbol "template"
   tname <- TName <$> name
-  braces $ flip evalStateT M.empty $ do
+  t <- braces $ flip evalStateT M.empty $ do
     typeGuid <- guid'
     typeMembers <- many (member <* semi)
     typeRestriction <- restriction
-    return (tname, TemplateData {..})
+    return TemplateData {..}
+
+  ts <- get
+  when (tname `M.member` dxTemplates ts) $ fail "template: repeating template name"
+  when (typeGuid t `S.member` dxTemplateGuids ts) $ fail "template: repeating GUID"
+  put ts { dxTemplates = M.insert tname (t, values t) $ dxTemplates ts
+         , dxTemplateGuids = S.insert (typeGuid t) $ dxTemplateGuids ts
+         }
+  return (tname, t)
+
   <?> "template"

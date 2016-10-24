@@ -88,10 +88,10 @@ template MeshMaterialList
     [Material <3D82AB4D-62DA-11CF-AB39-0020AF71E433>]
 }
 
-template TextureFilename 
-{ 
-    < A42790E1-7810-11cf-8F52-0040333594A3 > 
-    string filename; 
+template TextureFilename
+{
+    < A42790E1-7810-11cf-8F52-0040333594A3 >
+    string filename;
 }
 
 template Coords2d
@@ -106,4 +106,52 @@ template MeshTextureCoords
     < F6F23F40-7686-11cf-8F52-0040333594A3 >
     dword nTextureCoords;
     array Coords2d textureCoords[nTextureCoords];
+}
+
+template IndexedColor
+{
+    < 1630B820-7842-11cf-8F52-0040333594A3 >
+    DWORD index;
+    ColorRGBA indexColor;
+}
+
+template MeshVertexColors
+{
+    <1630B821-7842-11cf-8F52-0040333594A3>
+    DWORD nVertexColors;
+    array IndexedColor vertexColors[nVertexColors];
+}
+
+template FloatKeys
+{
+    < 10DD46A9-775B-11cf-8F52-0040333594A3 >
+    DWORD nValues;
+    array float values[nValues];
+}
+
+template TimedFloatKeys
+{
+    < F406B180-7B3B-11cf-8F52-0040333594A3 >
+    DWORD time;
+    FloatKeys tfkeys;
+}
+
+template AnimationKey
+{
+    < 10DD46A8-775B-11CF-8F52-0040333594A3 >
+    DWORD keyType;
+    DWORD nKeys;
+    array TimedFloatKeys keys[nKeys];
+}
+
+template Animation
+{
+    < 3D82AB4F-62DA-11cf-AB39-0020AF71E433 >
+    [...]
+}
+
+template AnimationSet
+{
+    < 3D82AB50-62DA-11cf-AB39-0020AF71E433 >
+    [ Animation < 3D82AB4F-62DA-11cf-AB39-0020AF71E433 > ]
 }

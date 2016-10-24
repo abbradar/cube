@@ -12,6 +12,7 @@ import Control.Monad
 import Text.Read (readMaybe)
 import Data.Map (Map)
 import qualified Data.Map as M
+import qualified Data.Set as S
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as B
 import Control.Monad.Trans.State
@@ -30,16 +31,8 @@ data TopLevel = XTemplate (TName, TemplateData)
               | XData Data
               deriving (Show, Eq)
 
-topTemplate :: XIParser (TName, TemplateData)
-topTemplate = do
-  (tn, t) <- template
-  ts <- get
-  when (tn `M.member` templates ts) $ fail "topTemplate: repeating template name"
-  put ts { templates = M.insert tn (t, values t) $ templates ts }
-  return (tn, t)
-
 topLevel :: XIParser TopLevel
-topLevel =     (XTemplate <$> topTemplate)
+topLevel =     (XTemplate <$> template)
            <|> (XData <$> object)
 
 data XHeader = XHeader { majorVersion :: Int
@@ -80,7 +73,11 @@ directX' knownTemplates = do
   xHeader@(XHeader {..}) <- header
   unless (majorVersion == 3 && minorVersion == 3 && formatType == "txt" && floatSize == 32) $ fail "directX: unsupported format"
 
-  let initState = ParserState { templates = fmap (\t -> (t, values t)) knownTemplates }
+  let initState = ParserState { dxTemplates = fmap (\t -> (t, values t)) knownTemplates
+                              , dxTemplateGuids = S.fromList $ map (\(_, t) -> typeGuid t) $ M.toList knownTemplates
+                              , dxObjects = M.empty
+                              , dxGuidObjects = M.empty
+                              }
 
   runLineCommentT $ runLineCommentT $ flip evalStateT initState $ do
     _ <- optional someSpace

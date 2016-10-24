@@ -37,8 +37,11 @@ data Value = VWord (ValueData Word16)
 
 type Values = Map MName Value
 
-newtype ParserState m = ParserState { templates :: Map TName (TemplateData, XParserT m Values)
-                                    }
+data ParserState m = ParserState { dxTemplates :: Map TName (TemplateData, XParserT m Values)
+                                 , dxTemplateGuids :: Set UUID
+                                 , dxObjects :: Map DName Data
+                                 , dxGuidObjects :: Map UUID Data
+                                 }
 
 type XParsing m = (Monad m, MonadPlus m, TokenParsing m)
 type XParserT m = StateT (ParserState m) m
@@ -62,8 +65,8 @@ data ValueType = Word
                | Custom TName
                deriving (Show, Eq)
 
-data Dimension = Const Int
-               | Ref MName
+data Dimension = DConst Int
+               | DRef MName
                deriving (Show, Eq)
 
 data Type = Value ValueType | Array ValueType [Dimension]
@@ -80,6 +83,18 @@ data TemplateData = TemplateData { typeGuid :: UUID
                                  }
                   deriving (Show, Eq)
 
+-- Data name
+newtype DName = DName {fromDName :: ByteString}
+              deriving (Show, Eq, Ord, DS.IsString)
+
+data Data = Data { dataTemplate :: TName
+                 , dataName :: Maybe DName
+                 , dataGuid :: Maybe UUID
+                 , dataValues :: Values
+                 , dataChildren :: [Data]
+                 }
+          deriving (Show, Eq)
+
 name :: XParsing m => m ByteString
 name = do
   h <- oneOfSet firstSet
@@ -89,7 +104,7 @@ name = do
   <?> "name"
   
   where firstSet = CS.fromList $ ['a'..'z'] ++ ['A'..'Z'] ++ ['_']
-        nextSet = CS.union firstSet $ CS.fromList ['0'..'9']
+        nextSet = CS.union firstSet $ CS.fromList $ ['0'..'9'] ++ ['-']
 
 guid :: forall m. XParsing m => m UUID
 guid = angles $
@@ -108,9 +123,9 @@ guid = angles $
         delim = char '-' *> pure "-"
 
 ciSymbol :: XParsing m => Text -> m Text
-ciSymbol "" = "" <$ optional someSpace
+ciSymbol "" = "" <$ someSpace
 ciSymbol t = do
   t' <- try $ T.pack <$> mapM (const anyChar) [1..T.length t]
   unless (CI.mk t == CI.mk t') $ fail "ciSymbol"
-  _ <- optional someSpace
+  someSpace
   return t

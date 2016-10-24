@@ -90,9 +90,9 @@ main = do
     object <- initFrame fr
     --light
     let light = DirectionalLight { lcolor = V3 0.7 0.7 0.7
-
-                             , ldirection = V3 (-0.42) (-0.57) (-0.71)
-                             , lambient = 0.6 }
+                                 , ldirection = V3 (-0.42) (-0.57) (-0.71)
+                                 , lambient = 0.6
+                                 }
     fpsLimit <- newFPSLimit
  
     let initialState = GameInitialState {..}
