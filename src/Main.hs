@@ -85,7 +85,7 @@ main = do
     mesh <- loadMeshOBJ meshPath
     meshBuffer <- initMeshBuffer mesh
     -- .X files
-    fr <- loadFrameX xDataTemplates "data/xobjects/lzom.x"
+    fr <- loadFrameX xDataTemplates "data/xobjects/cube2.x"
     traceShowM fr
     object <- initFrame fr
     --light
@@ -179,7 +179,7 @@ drawLoop w (GameSettings {..}) (GameInitialState {..}) = loop
         setUniform (lambient light) lightiloc pl
         -- meshes
         drawMesh meshBuffer pl
-        drawFrame object identity pl
+        drawFrame object mvMloc mvM pl
         
       runPendingFinalizers
       glSwapWindow w

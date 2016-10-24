@@ -37,7 +37,7 @@ import Data.DirectX.Core
 import Data.Tree
 import Engine.Types
 
---import Debug.Trace
+import Debug.Trace
 
 -- Total size of a vector; maybe useful enough to move inside library
 sizeOfV :: forall a. (Storable a) => Vector a -> Int
@@ -87,7 +87,7 @@ loadFrame dt
   where
       fname = fromDName <$> dataName dt
     -- if fails to find one, sets to identity
-      ftransform = getMatrix $ searchFieldT "frameTransformMatrix" (dataChildren dt)
+      ftransform = getMatrix $ searchFieldT "FrameTransformMatrix" (dataChildren dt)
       fchildren = loadFrames (dataChildren dt)
       fmesh = loadMesh $ searchFieldT "Mesh" (dataChildren dt)
       fbuffer = Nothing
@@ -98,7 +98,7 @@ getMatrix (Just d) = fromMaybe (error "invalid transform matrix") $ do
     VCustom (DV data1) <- M.lookup "frameMatrix" (dataValues d)
     VFloat (DA vals) <- M.lookup "matrix" data1
     let a11:a12:a13:a14:a21:a22:a23:a24:a31:a32:a33:a34:a41:a42:a43:a44:[] = vals
-    return $ V4 (V4 a11 a12 a13 a14) (V4 a21 a22 a23 a24) (V4 a31 a32 a33 a34) (V4 a41 a42 a43 a44)
+    return  $ V4 (V4 a11 a12 a13 a14) (V4 a21 a22 a23 a24) (V4 a31 a32 a33 a34) (V4 a41 a42 a43 a44)
 
 unMonad :: Monad m => String -> Maybe a -> m a
 unMonad err Nothing = fail err
@@ -207,9 +207,11 @@ initFrame frame = do
   chldrn <- mapM initFrame (fchildren frame)
   return FrameBuffers{ fframe = frame, fbuffer = mbuf, fbchildren = chldrn }
 
-drawFrame :: FrameBuffers -> MF44 -> Pipeline -> DrawT IO ()
-drawFrame fbuf loc pl = do
+drawFrame :: FrameBuffers -> UniformLocation -> MF44 -> Pipeline -> DrawT IO ()
+drawFrame fbuf loc mvM pl = do
+  setUniform nmvM loc pl
   unless (isNothing (fbuffer fbuf)) $ drawMesh mb pl
   mapM_ drawFrameA (fbchildren fbuf)
-  where drawFrameA x = drawFrame x loc pl
+  where drawFrameA x = drawFrame x loc nmvM pl
+        nmvM = (ftransform (fframe fbuf)) !*! mvM
         (Just mb) = fbuffer fbuf
