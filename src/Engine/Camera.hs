@@ -9,7 +9,10 @@ import Engine.Types
 import Debug.Trace
 
 critAngleTan :: Float
-critAngleTan = 9.0
+critAngleTan = 5.0
+
+upvector :: V3 Float
+upvector = V3 0.0 1.0 0.0
 
 data Camera = Camera { _eye :: F3
                      , _lookat :: F3
@@ -23,7 +26,7 @@ data Camera = Camera { _eye :: F3
 $(makeLenses ''Camera)
 
 instance Default Camera where
-  def = Camera { _eye = (V3 2.0 2.0 (-8.0))
+  def = Camera { _eye = (V3 10.0 10.0 (-40.0))
                , _lookat = (V3 0.0 0.0 0.0)
                --, _rotation = axisAngle (V3 0 1 0) 0
                , _fov = pi/4.0
@@ -36,7 +39,7 @@ projectionMatrix :: Camera -> MF44
 projectionMatrix (Camera {..}) = transpose $ perspective _fov _ratio _nplane _fplane
 
 viewMatrix :: Camera -> MF44
-viewMatrix (Camera {..}) = transpose $ lookAt _eye _lookat (V3 0.0 0.0 1.0)
+viewMatrix (Camera {..}) = transpose $ lookAt _eye _lookat upvector
     
 
 moveEyes :: F3 -> Camera -> Camera
@@ -47,11 +50,11 @@ rotateEyes :: F2 -> Camera -> Camera
 rotateEyes rel@(V2 x y) cam@(Camera {..})
   | nearZero rel = cam
   | otherwise = cam { _eye = _lookat + rotation !* radius }
-  where upvect = (V3 0.0 0.0 1.0)
+  where upvect = upvector
         radius = _eye - _lookat
-        slope (V3 xv yv zv) = zv**2/(xv**2 + yv**2)
+        slope (V3 xv yv zv) = yv**2/(xv**2 + zv**2)
         ynew 
-          | (slope radius > critAngleTan) && (y * (radius ^. _z) < 0) = 0
+          | (slope radius > critAngleTan) && (y * (radius ^. _y) < 0) = 0
           | otherwise = y
-        rotation = fromQuaternion ((axisAngle (V3 0.0 0.0 1.0) x) *
+        rotation = fromQuaternion ((axisAngle upvector (-x)) *
           (axisAngle (upvect `cross` radius) ynew))

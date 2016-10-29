@@ -169,6 +169,7 @@ drawLoop w (GameSettings {..}) (GameInitialState {..}) = loop
         setUniform pM pMloc pl
         mvMloc <- getUniformLocation "modelViewMat" pl
         setUniform mvM mvMloc pl
+        tloc <- getUniformLocation "tex" pl
         -- lighting
         lightcloc <- getUniformLocation "sunLight.color" pl
         setUniform (lcolor light) lightcloc pl
@@ -177,7 +178,7 @@ drawLoop w (GameSettings {..}) (GameInitialState {..}) = loop
         lightiloc <- getUniformLocation "sunLight.ambient" pl
         setUniform (lambient light) lightiloc pl
         -- meshes
-        drawFrame object mvMloc mvM pl
+        drawFrame object mvMloc tloc mvM pl
         
       runPendingFinalizers
       glSwapWindow w

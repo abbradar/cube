@@ -1,6 +1,8 @@
 #version 330 core
 
 smooth in vec3 onorm;
+smooth in vec2 ftexcoord;
+uniform sampler2D tex;
 
 out vec4 color;
 
@@ -15,5 +17,5 @@ uniform DirectionalLight sunLight;
 void main()
 {
   float diffuseint = max(0.0, dot(normalize(onorm),  -sunLight.direction));
-  color = vec4(vec3(0.2, 0.2, 0.8)*(sunLight.ambient*sunLight.color + diffuseint), 1.0);
+  color = texture(tex, ftexcoord)*(sunLight.ambient*sunLight.color + diffuseint, 1.0);
 }

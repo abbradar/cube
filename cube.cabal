@@ -44,6 +44,8 @@ executable triangle
                      , bytestring
                      , sdl2
                      , caramia
+                     , c-storable-deriving
+                     , JuicyPixels
                      , linear >= 1.20.0
                      , lens
                      , data-default

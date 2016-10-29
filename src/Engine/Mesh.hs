@@ -16,7 +16,10 @@ module Engine.Mesh
        ) where
 
 import Control.Monad
+import Codec.Picture
 import Foreign.Storable (Storable(..))
+import GHC.Generics (Generic(..))
+import Foreign.CStorable (CStorable(..))
 import Data.Vector.Storable (Vector)
 import qualified Data.Vector.Storable as VS
 import qualified Data.Scientific as S
@@ -28,7 +31,9 @@ import Linear.V4
 import Linear.Matrix
 
 import Data.ByteString (ByteString)
+import Data.ByteString.Char8 (unpack)
 import qualified Data.Map as M
+import qualified Data.IntMap.Strict as IM
 import Data.Maybe
 import Data.Wavefront
 import Data.DirectX
@@ -44,20 +49,36 @@ sizeOfV :: forall a. (Storable a) => Vector a -> Int
 sizeOfV vec = sizeOf (undefined :: a) * VS.length vec
 
 type Vert = V2 F3
+-- vertex with coords, normals and texture coords, the default one
+data Vertexd = Vertexd { position :: !F3 
+                       , normal :: !F3
+                       , texcoords :: !F2 } deriving (Generic, Show, Eq, Read)
+instance CStorable Vertexd
+instance CStorable a => CStorable (V3 a)
+instance CStorable a => CStorable (V2 a)
+
 type Ind = I3
 
-data Mesh = Mesh { vertices :: Vector Vert
+data Mesh = Mesh { vertices :: Vector Vertexd
                  , indices :: Vector Ind
                  } deriving (Show, Eq, Read)
 
 data Frame = Frame { fmesh :: Maybe Mesh
                    , fname :: Maybe ByteString
+                   , tname :: Maybe ByteString
                    , ftransform :: MF44
                    } deriving (Show, Eq, Read)
 
 data FrameBuffer = FrameBuffer { fframe :: Frame
                                , fbuffer :: Maybe MeshBuffer
+                               , ftexture :: Maybe Texture
                                }
+
+instance Storable Vertexd where
+  sizeOf = cSizeOf
+  alignment = cAlignment
+  peek = cPeek
+  poke = cPoke
 
 loadFrameX :: XTemplates -> FilePath -> IO (Tree Frame)
 loadFrameX tmpls path = do
@@ -70,6 +91,7 @@ loadFrameX tmpls path = do
             fs <- mapM loadFrameTree $ filter (\x -> dataTemplate x == "Frame") $ xData r
             let root = Frame { fmesh = Nothing
                              , fname = Nothing
+                             , tname = Nothing
                              , ftransform = identity
                              }
             return $ Node root fs
@@ -93,7 +115,13 @@ loadFrameTree dt
       -- if fails to find one, sets to identity
       ftransform = getMatrix $ searchFieldT "FrameTransformMatrix" (dataChildren dt)
       fchildren = loadFrameTrees $ dataChildren dt
-      fmesh = searchFieldT "Mesh" (dataChildren dt) >>= loadMesh
+      meshdt = searchFieldT "Mesh" (dataChildren dt)
+      fmesh = meshdt >>= loadMesh
+      tname = do
+        mdt <- meshdt
+        ml <- searchFieldT "MeshMaterialList" (dataChildren mdt)
+        loadMaterial ml
+      
 
 getMatrix :: Maybe Data -> MF44
 getMatrix Nothing = identity
@@ -102,6 +130,14 @@ getMatrix (Just d) = fromMaybe (error "invalid transform matrix") $ do
     VFloat (DA vals) <- M.lookup "matrix" data1
     let [a11,a12,a13,a14,a21,a22,a23,a24,a31,a32,a33,a34,a41,a42,a43,a44] = vals
     return  $ V4 (V4 a11 a12 a13 a14) (V4 a21 a22 a23 a24) (V4 a31 a32 a33 a34) (V4 a41 a42 a43 a44)
+
+-- XXX: as for now only loads the texture filename from the ONE material
+loadMaterial :: Data -> Maybe ByteString
+loadMaterial dt = do
+    ml <- (searchFieldT "Material" (dataChildren dt))
+    tname <- searchFieldT "TextureFilename" (dataChildren ml)
+    VString (DV nm) <- M.lookup "filename" $ dataValues ( tname )
+    return nm
 
 unMonad :: Monad m => String -> Maybe a -> m a
 unMonad err Nothing = fail err
@@ -130,11 +166,20 @@ loadMesh dt = do
     dtn1 <- unMonad "no normals data found" dtn
     VCustom (DA normals) <- M.lookup "normals" (dataValues dtn1)
     let norms = map verts1 normals
+    --coords
+    let dtt = searchFieldT "MeshTextureCoords" (dataChildren dt)
+    dtt1 <- unMonad "no texcoords data found" dtt
+    VCustom (DA coordinates) <- M.lookup "textureCoords" (dataValues dtt1)
+    let coords1 x = fromMaybe (V2 0 0) $ do
+          VFloat (DV x1) <- M.lookup "u" x 
+          VFloat (DV y1) <- M.lookup "v" x 
+          return (V2 x1 y1)
+        coords = map coords1 coordinates
     -- gluing together
     indlist <- forM inds $ \case
       [a, b, c] -> return (fromIntegral <$> V3 a b c)
       _ -> Nothing
-    let vertlist = zipWith V2 verts norms
+    let vertlist = zipWith3 (Vertexd) (verts) (norms) coords
     return Mesh { vertices = VS.fromList vertlist, indices = VS.fromList indlist }
 
 loadFrameTrees :: [Data] -> [Tree Frame]
@@ -150,7 +195,7 @@ loadMeshOBJ path = do
           indlist = map (fmap fromIntegral) wfIndices
           --TODO: check different length
           convertF = map (fmap S.toRealFloat)
-          vertlist = zipWith V2 (convertF wfVertices) (convertF wfNormals)
+          vertlist = zipWith3 Vertexd (convertF wfVertices) (convertF wfNormals) (repeat (V2 0.0 0.0))
           --vertlist = zip wfVertices wfNormals
       return Mesh { vertices = VS.fromList vertlist
                   , indices = VS.fromList indlist
@@ -169,19 +214,25 @@ initMeshBuffer :: Mesh -> IO MeshBuffer
 initMeshBuffer mesh = do
   vao <- newVAO
   buff <- newBuffer defaultBufferCreation { accessHints = (Static, Draw)
-                                          , size = sizeOfV (vertices mesh) + sizeOfV(indices mesh)
+                                          , size = sizeOfV (vertices mesh) + sizeOfV (indices mesh)
                                           }
   uploadVector (vertices mesh) 0 buff
   sourceVertexData buff defaultSourcing { components = 3
-                                        , stride = sizeOf (undefined :: Vert)
+                                        , stride = sizeOf (undefined :: Vertexd)
                                         , attributeIndex = 0
                                         , sourceType = SFloat
                                         } vao
   
   sourceVertexData buff defaultSourcing { offset = sizeOf (undefined :: (V3 Float))
                                         , components = 3
-                                        , stride = sizeOf (undefined :: Vert)
+                                        , stride = sizeOf (undefined :: Vertexd)
                                         , attributeIndex = 1
+                                        , sourceType = SFloat
+                                        } vao
+  sourceVertexData buff defaultSourcing { offset = 2 * sizeOf (undefined :: (V3 Float))
+                                        , components = 2
+                                        , stride = sizeOf (undefined :: Vertexd)
+                                        , attributeIndex = 2
                                         , sourceType = SFloat
                                         } vao
 
@@ -201,16 +252,48 @@ drawMesh mesh pl =
                     , sourceData = PrimitivesWithIndices (mbuffer mesh) (indOffset mesh) IWord16
                     }
 
+loadTex :: FilePath -> IO (Maybe Texture)
+loadTex file = do
+    imgl <- readImage file
+    case imgl of 
+      Right img -> Just <$> (texture img)
+      _ -> do
+             traceIO "AYAYA" 
+             return Nothing
+
+
+texture :: DynamicImage -> IO Texture
+texture (ImageRGB8 image@(Image w h _)) = do
+    tx <- newTexture spec
+    buff <- newBufferFromVector (imageData image) id
+    uploadToTexture (uploading2D buff w h FWord8 URGB) tx
+    return tx
+    where
+      spec = textureSpecification{ topology = Tex2D{ width2D = w, height2D = h }, imageFormat = RGB8 }
+texture _  = do
+               traceIO "MASLINU" 
+               fail "format not available" 
+
 initFrameBuffer :: Frame -> IO FrameBuffer
 initFrameBuffer frame = do
   mbuf <- mapM initMeshBuffer (fmesh frame)
-  return FrameBuffer { fframe = frame, fbuffer = mbuf }
+  tex <- join <$> mapM (loadTex . unpack) (tname frame)
+  return FrameBuffer { fframe = frame, fbuffer = mbuf, ftexture = tex }
 
-drawFrame :: Tree FrameBuffer -> UniformLocation -> MF44 -> Pipeline -> DrawT IO ()
-drawFrame (Node fbuf fbchildren) loc mvM pl = do
-  setUniform nmvM loc pl
+
+defTex' :: Int
+defTex' = 0
+
+drawFrame :: Tree FrameBuffer -> UniformLocation -> UniformLocation -> MF44 -> Pipeline -> DrawT IO ()
+drawFrame (Node fbuf fbchildren) mloc tloc mvM pl = do
+  setUniform nmvM mloc pl
+  case (ftexture fbuf) of
+    Just tex' -> do 
+      setTextureBindings (IM.singleton defTex' tex')
+      setUniform defTex' tloc pl
+    Nothing -> return ()
   unless (isNothing (fbuffer fbuf)) $ drawMesh mb pl
   mapM_ drawFrameA fbchildren
-  where drawFrameA x = drawFrame x loc nmvM pl
+  where drawFrameA x = drawFrame x mloc tloc nmvM pl
         nmvM = ftransform (fframe fbuf) !*! mvM
         (Just mb) = fbuffer fbuf
