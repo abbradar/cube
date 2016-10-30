@@ -39,6 +39,10 @@ executable triangle
                      , RankNTypes
                      , ConstraintKinds
                      , LambdaCase
+                     , DefaultSignatures
+                     , TypeOperators
+                     , FlexibleContexts
+                     , FlexibleInstances
   build-depends:       base >= 4.7
                      , text
                      , bytestring

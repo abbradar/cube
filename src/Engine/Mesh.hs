@@ -15,11 +15,15 @@ module Engine.Mesh
        , drawFrame
        ) where
 
+import qualified Data.Map as M
+import qualified Data.IntMap.Strict as IM
+import Data.Maybe
 import Control.Monad
 import Codec.Picture
+import Data.ByteString (ByteString)
+import qualified Data.ByteString.Char8 as B
 import Foreign.Storable (Storable(..))
 import GHC.Generics (Generic(..))
-import Foreign.CStorable (CStorable(..))
 import Data.Vector.Storable (Vector)
 import qualified Data.Vector.Storable as VS
 import qualified Data.Scientific as S
@@ -30,11 +34,7 @@ import Linear.V3
 import Linear.V4
 import Linear.Matrix
 
-import Data.ByteString (ByteString)
-import Data.ByteString.Char8 (unpack)
-import qualified Data.Map as M
-import qualified Data.IntMap.Strict as IM
-import Data.Maybe
+import Foreign.Storable.Generic
 import Data.Wavefront
 import Data.DirectX
 import Data.DirectX.Data
@@ -49,36 +49,38 @@ sizeOfV :: forall a. (Storable a) => Vector a -> Int
 sizeOfV vec = sizeOf (undefined :: a) * VS.length vec
 
 type Vert = V2 F3
+
 -- vertex with coords, normals and texture coords, the default one
 data Vertexd = Vertexd { position :: !F3 
                        , normal :: !F3
-                       , texcoords :: !F2 } deriving (Generic, Show, Eq, Read)
-instance CStorable Vertexd
-instance CStorable a => CStorable (V3 a)
-instance CStorable a => CStorable (V2 a)
+                       , texcoords :: !F2
+                       }
+             deriving (Generic, Show, Eq, Read)
+
+instance Storable Vertexd where
+  peek = gPeek
+  poke = gPoke
+  sizeOf = gSizeOf
+  alignment = gAlignment
 
 type Ind = I3
 
 data Mesh = Mesh { vertices :: Vector Vertexd
                  , indices :: Vector Ind
-                 } deriving (Show, Eq, Read)
+                 }
+          deriving (Show, Eq, Read)
 
 data Frame = Frame { fmesh :: Maybe Mesh
                    , fname :: Maybe ByteString
                    , tname :: Maybe ByteString
                    , ftransform :: MF44
-                   } deriving (Show, Eq, Read)
+                   }
+           deriving (Show, Eq, Read)
 
 data FrameBuffer = FrameBuffer { fframe :: Frame
                                , fbuffer :: Maybe MeshBuffer
                                , ftexture :: Maybe Texture
                                }
-
-instance Storable Vertexd where
-  sizeOf = cSizeOf
-  alignment = cAlignment
-  peek = cPeek
-  poke = cPoke
 
 loadFrameX :: XTemplates -> FilePath -> IO (Tree Frame)
 loadFrameX tmpls path = do
@@ -139,9 +141,9 @@ loadMaterial dt = do
     VString (DV nm) <- M.lookup "filename" $ dataValues ( tname )
     return nm
 
-unMonad :: Monad m => String -> Maybe a -> m a
-unMonad err Nothing = fail err
-unMonad _ (Just a) = return a
+maybeM :: Monad m => String -> Maybe a -> m a
+maybeM err Nothing = fail err
+maybeM _ (Just a) = return a
 
 -- load Mesh with 3-indexed faces and vertex normals
 -- all incorrect vertexes become (0 0 0)
@@ -155,20 +157,20 @@ loadMesh dt = do
         inds = map inds1 faces
     --vertices
     VCustom (DA vertices) <- M.lookup "vertices" (dataValues dt)
-    let verts1 x = fromMaybe (V3 0 0 0) $ do
-          VFloat (DV x1) <- M.lookup "x" x 
-          VFloat (DV y1) <- M.lookup "y" x 
-          VFloat (DV z1) <- M.lookup "z" x 
+    let verts1 p = fromMaybe (V3 0 0 0) $ do
+          VFloat (DV x1) <- M.lookup "x" p
+          VFloat (DV y1) <- M.lookup "y" p
+          VFloat (DV z1) <- M.lookup "z" p
           return (V3 x1 y1 z1)
         verts = map verts1 vertices
     --normals
     let dtn = searchFieldT "MeshNormals" (dataChildren dt)
-    dtn1 <- unMonad "no normals data found" dtn
+    dtn1 <- maybeM "no normals data found" dtn
     VCustom (DA normals) <- M.lookup "normals" (dataValues dtn1)
     let norms = map verts1 normals
     --coords
     let dtt = searchFieldT "MeshTextureCoords" (dataChildren dt)
-    dtt1 <- unMonad "no texcoords data found" dtt
+    dtt1 <- maybeM "no texcoords data found" dtt
     VCustom (DA coordinates) <- M.lookup "textureCoords" (dataValues dtt1)
     let coords1 x = fromMaybe (V2 0 0) $ do
           VFloat (DV x1) <- M.lookup "u" x 
@@ -178,9 +180,12 @@ loadMesh dt = do
     -- gluing together
     indlist <- forM inds $ \case
       [a, b, c] -> return (fromIntegral <$> V3 a b c)
-      _ -> Nothing
-    let vertlist = zipWith3 (Vertexd) (verts) (norms) coords
-    return Mesh { vertices = VS.fromList vertlist, indices = VS.fromList indlist }
+      _ -> fail "invalid points number"
+    let vertlist = zipWith3 Vertexd verts norms coords
+
+    return Mesh { vertices = VS.fromList vertlist
+                , indices = VS.fromList indlist
+                }
 
 loadFrameTrees :: [Data] -> [Tree Frame]
 loadFrameTrees dtl = mapMaybe loadFrameTree dtl
@@ -248,7 +253,6 @@ drawMesh mesh pl =
   drawR drawCommand { primitiveType = Triangles
                     , primitivesVAO = mvao mesh
                     , numIndices = indNumber mesh
-                    -- , sourceData = Primitives 0
                     , sourceData = PrimitivesWithIndices (mbuffer mesh) (indOffset mesh) IWord16
                     }
 
@@ -256,28 +260,28 @@ loadTex :: FilePath -> IO (Maybe Texture)
 loadTex file = do
     imgl <- readImage file
     case imgl of 
-      Right img -> Just <$> (texture img)
-      _ -> do
-             traceIO "AYAYA" 
-             return Nothing
+      Right img -> Just <$> texture img
+      _ -> return Nothing
 
 
 texture :: DynamicImage -> IO Texture
 texture (ImageRGB8 image@(Image w h _)) = do
-    tx <- newTexture spec
-    buff <- newBufferFromVector (imageData image) id
-    uploadToTexture (uploading2D buff w h FWord8 URGB) tx
-    return tx
-    where
-      spec = textureSpecification{ topology = Tex2D{ width2D = w, height2D = h }, imageFormat = RGB8 }
-texture _  = do
-               traceIO "MASLINU" 
-               fail "format not available" 
+  tx <- newTexture spec
+  buff <- newBufferFromVector (imageData image) id
+  uploadToTexture (uploading2D buff w h FWord8 URGB) tx
+  return tx
+
+  where
+    spec = textureSpecification { topology = Tex2D { width2D = w, height2D = h }
+                                , imageFormat = RGB8
+                                }
+
+texture _  = fail "format not available"
 
 initFrameBuffer :: Frame -> IO FrameBuffer
 initFrameBuffer frame = do
   mbuf <- mapM initMeshBuffer (fmesh frame)
-  tex <- join <$> mapM (loadTex . unpack) (tname frame)
+  tex <- join <$> mapM (loadTex . B.unpack) (tname frame)
   return FrameBuffer { fframe = frame, fbuffer = mbuf, ftexture = tex }
 
 
@@ -287,7 +291,7 @@ defTex' = 0
 drawFrame :: Tree FrameBuffer -> UniformLocation -> UniformLocation -> MF44 -> Pipeline -> DrawT IO ()
 drawFrame (Node fbuf fbchildren) mloc tloc mvM pl = do
   setUniform nmvM mloc pl
-  case (ftexture fbuf) of
+  case ftexture fbuf of
     Just tex' -> do 
       setTextureBindings (IM.singleton defTex' tex')
       setUniform defTex' tloc pl
