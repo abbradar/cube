@@ -13,6 +13,8 @@ module Engine.Mesh
        , drawMesh
        , initFrameBuffer
        , drawFrame
+       , FrameTree
+       , FrameBufferTree
        ) where
 
 import qualified Data.Map as M
@@ -76,6 +78,9 @@ data Frame = Frame { fmesh :: Maybe Mesh
                    , ftransform :: MF44
                    }
            deriving (Show, Eq, Read)
+
+type FrameTree = Tree Frame
+type FrameBufferTree = Tree FrameBuffer
 
 data FrameBuffer = FrameBuffer { fframe :: Frame
                                , fbuffer :: Maybe MeshBuffer
@@ -278,10 +283,12 @@ texture (ImageRGB8 image@(Image w h _)) = do
 
 texture _  = fail "format not available"
 
-initFrameBuffer :: Frame -> IO FrameBuffer
-initFrameBuffer frame = do
+initFrameBuffer :: FilePath -> Frame -> IO FrameBuffer
+initFrameBuffer fdir frame = do
   mbuf <- mapM initMeshBuffer (fmesh frame)
-  tex <- join <$> mapM (loadTex . B.unpack) (tname frame)
+  let fname = fmap B.unpack (tname frame)
+      name' = fmap (fdir ++ ) fname
+  tex <- maybe (return Nothing) loadTex name'
   return FrameBuffer { fframe = frame, fbuffer = mbuf, ftexture = tex }
 
 

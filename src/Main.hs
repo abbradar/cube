@@ -11,11 +11,14 @@ import Data.Default
 import Linear
 import Control.Lens
 import Control.Exception (handle)
-import Graphics.Caramia as Car hiding (normalize)
-import SDL
+import Graphics.Caramia hiding (normalize, draw)
+import qualified Graphics.Caramia as Car
+import SDL hiding (initialize)
+import qualified SDL 
 import Text.Trifecta (parseFromFile)
 
-import Engine.Mesh
+import Engine.Drawable
+import qualified Engine.Drawable as GC
 import Engine.Camera
 import Engine.Framerate
 import Data.DirectX
@@ -28,7 +31,7 @@ data GameSettings = GameSettings { intervalTime :: Word32
                                  , mouseSensitivity :: Float
                                  , xTemplatesPath :: FilePath
                                  , shaderPath :: FilePath
-                                 , meshPath :: FilePath
+                                 , objPath :: FilePath
                                  }
                   deriving (Show, Read, Eq)
 
@@ -39,7 +42,7 @@ data DirectionalLight = DirectionalLight { lcolor :: V3 Float
                   deriving (Show, Read, Eq)
 
 data GameInitialState = GameInitialState { pl :: Pipeline
-                                         , object :: Tree FrameBuffer
+                                         , object :: XObject
                                          , light :: DirectionalLight
                                          , fpsLimit :: FPSLimit
                                          , xDataTemplates :: XTemplates
@@ -69,7 +72,7 @@ main = do
       Nothing -> fail "cannot load X templates"
       Just r' -> return $ xTemplates r'
 
-  initialize [InitVideo, InitEvents]
+  SDL.initialize [InitVideo, InitEvents]
 
   w <- createWindow "A Window" defaultWindow { windowInitialSize = fromIntegral <$> initialSize
                                              , windowOpenGL = Just defaultOpenGL { glProfile = Core Debug 3 3 }
@@ -82,8 +85,8 @@ main = do
     fgsource <- T.readFile $ shaderPath <> ".fs"
     pl <- handle (\(ShaderCompilationError msg) -> T.putStrLn msg >> fail "shader compilation error") $ newPipelineVF vxsource fgsource M.empty
     -- .X files
-    fr <- loadFrameX xDataTemplates "data/xobjects/lzom.x"
-    object <- mapM initFrameBuffer fr
+    objd <- loadFromFile xDataTemplates "data/xobjects/" "lzom.x"
+    object <- initialize objd
     --light
     let light = DirectionalLight { lcolor = V3 0.7 0.7 0.7
                                  , ldirection = V3 (-0.42) (-0.57) (-0.71)
@@ -178,7 +181,7 @@ drawLoop w (GameSettings {..}) (GameInitialState {..}) = loop
         lightiloc <- getUniformLocation "sunLight.ambient" pl
         setUniform (lambient light) lightiloc pl
         -- meshes
-        drawFrame object mvMloc tloc mvM pl
+        draw DContext {cpl = pl, cmvMLoc = mvMloc, ctexLoc = tloc, cmvM = mvM} object
         
       runPendingFinalizers
       glSwapWindow w

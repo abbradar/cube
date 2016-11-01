@@ -23,6 +23,7 @@ executable triangle
                      , Data.DirectX.Data
                      , Data.DirectX
                      , Engine.Mesh
+                     , Engine.Drawable
                      , Engine.Camera
                      , Engine.Framerate
                      , Engine.Types
