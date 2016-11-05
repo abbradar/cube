@@ -51,6 +51,10 @@ sizeOfV :: forall a. (Storable a) => Vector a -> Int
 sizeOfV vec = sizeOf (undefined :: a) * VS.length vec
 
 type Vert = V2 F3
+type Ind = I3
+type BoneInd = I4
+type BoneWghts = F4
+
 
 -- vertex with coords, normals and texture coords, the default one
 data Vertexd = Vertexd { position :: !F3 
@@ -59,18 +63,39 @@ data Vertexd = Vertexd { position :: !F3
                        }
              deriving (Generic, Show, Eq, Read)
 
+-- skinned vertex
+data SVertexd = SVertexd { sposition :: !F3 
+                       , snormal :: !F3
+                       , stexcoords :: !F2
+                       , binds :: !BoneInd
+                       , bwghts :: !BoneWghts
+                       }
+             deriving (Generic, Show, Eq, Read)
+
+
+
 instance Storable Vertexd where
   peek = gPeek
   poke = gPoke
   sizeOf = gSizeOf
   alignment = gAlignment
 
-type Ind = I3
+instance Storable SVertexd where
+  peek = gPeek
+  poke = gPoke
+  sizeOf = gSizeOf
+  alignment = gAlignment
+
 
 data Mesh = Mesh { vertices :: Vector Vertexd
                  , indices :: Vector Ind
                  }
           deriving (Show, Eq, Read)
+
+data SMesh = SMesh { svertices :: Vector SVertexd
+                   , sindices :: Vector Ind
+                   }
+           deriving (Show, Eq, Read)
 
 data Frame = Frame { fmesh :: Maybe Mesh
                    , fname :: Maybe ByteString
