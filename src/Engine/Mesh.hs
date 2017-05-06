@@ -58,42 +58,42 @@ type BoneWghts = F4
 
 
 -- vertex with coords, normals and texture coords, the default one
-data Vertexd = Vertexd { position :: !F3 
+data VertexD = VertexD { position :: !F3
                        , normal :: !F3
                        , texcoords :: !F2
                        }
              deriving (Generic, Show, Eq, Read)
 
 -- skinned vertex
-data SVertexd = SVertexd { sposition :: !F3 
-                       , snormal :: !F3
-                       , stexcoords :: !F2
-                       , binds :: !BoneInd
-                       , bwghts :: !BoneWghts
-                       }
+data SVertexD = SVertexD { sposition :: !F3
+                         , snormal :: !F3
+                         , stexcoords :: !F2
+                         , binds :: !BoneInd
+                         , bwghts :: !BoneWghts
+                         }
              deriving (Generic, Show, Eq, Read)
 
 
 
-instance Storable Vertexd where
+instance Storable VertexD where
   peek = gPeek
   poke = gPoke
   sizeOf = gSizeOf
   alignment = gAlignment
 
-instance Storable SVertexd where
+instance Storable SVertexD where
   peek = gPeek
   poke = gPoke
   sizeOf = gSizeOf
   alignment = gAlignment
 
 
-data Mesh = Mesh { vertices :: Vector Vertexd
+data Mesh = Mesh { vertices :: Vector VertexD
                  , indices :: Vector Ind
                  }
           deriving (Show, Eq, Read)
 
-data SMesh = SMesh { svertices :: Vector SVertexd
+data SMesh = SMesh { svertices :: Vector SVertexD
                    , sindices :: Vector Ind
                    }
            deriving (Show, Eq, Read)
@@ -237,7 +237,7 @@ loadMesh dt = do
     indlist <- forM inds $ \case
       [a, b, c] -> return (fromIntegral <$> V3 a b c)
       _ -> fail "invalid points number"
-    let vertlist = zipWith3 Vertexd verts norms coords
+    let vertlist = zipWith3 VertexD verts norms coords
 
     return Mesh { vertices = VS.fromList vertlist
                 , indices = VS.fromList indlist
@@ -256,7 +256,7 @@ loadMeshOBJ path = do
           indlist = map (fmap fromIntegral) wfIndices
           --TODO: check different length
           convertF = map (fmap S.toRealFloat)
-          vertlist = zipWith3 Vertexd (convertF wfVertices) (convertF wfNormals) (repeat (V2 0.0 0.0))
+          vertlist = zipWith3 VertexD (convertF wfVertices) (convertF wfNormals) (repeat (V2 0.0 0.0))
           --vertlist = zip wfVertices wfNormals
       return Mesh { vertices = VS.fromList vertlist
                   , indices = VS.fromList indlist
@@ -279,20 +279,20 @@ initMeshBuffer mesh = do
                                           }
   uploadVector (vertices mesh) 0 buff
   sourceVertexData buff defaultSourcing { components = 3
-                                        , stride = sizeOf (undefined :: Vertexd)
+                                        , stride = sizeOf (undefined :: VertexD)
                                         , attributeIndex = 0
                                         , sourceType = SFloat
                                         } vao
   
   sourceVertexData buff defaultSourcing { offset = sizeOf (undefined :: (V3 Float))
                                         , components = 3
-                                        , stride = sizeOf (undefined :: Vertexd)
+                                        , stride = sizeOf (undefined :: VertexD)
                                         , attributeIndex = 1
                                         , sourceType = SFloat
                                         } vao
   sourceVertexData buff defaultSourcing { offset = 2 * sizeOf (undefined :: (V3 Float))
                                         , components = 2
-                                        , stride = sizeOf (undefined :: Vertexd)
+                                        , stride = sizeOf (undefined :: VertexD)
                                         , attributeIndex = 2
                                         , sourceType = SFloat
                                         } vao
