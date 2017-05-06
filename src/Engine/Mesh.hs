@@ -20,6 +20,7 @@ module Engine.Mesh
 import qualified Data.Map as M
 import qualified Data.IntMap.Strict as IM
 import Data.Maybe
+import Data.Word
 import Control.Monad
 import Codec.Picture
 import Data.ByteString (ByteString)
@@ -175,30 +176,40 @@ maybeM :: Monad m => String -> Maybe a -> m a
 maybeM err Nothing = fail err
 maybeM _ (Just a) = return a
 
--- load Mesh with 3-indexed faces and vertex normals
--- all incorrect vertexes become (0 0 0)
-loadMesh :: Data -> Maybe Mesh
-loadMesh dt = do
-    --faces
+
+-- functions for mesh loading
+loadInds :: Data -> Maybe [[Word32]]
+loadInds dt = do
     VCustom (DA faces) <- M.lookup "faces" (dataValues dt)
     let inds1 x = fromMaybe [] $ do
           VDWord (DA ins) <- M.lookup "faceVertexIndices" x 
           return ins
-        inds = map inds1 faces
-    --vertices
+        inds' = map inds1 faces
+    return inds'
+
+verts1 :: Values -> V3 Float
+verts1 p = fromMaybe (V3 0 0 0) $ do
+    VFloat (DV x1) <- M.lookup "x" p
+    VFloat (DV y1) <- M.lookup "y" p
+    VFloat (DV z1) <- M.lookup "z" p
+    return (V3 x1 y1 z1)
+
+loadVerts :: Data -> Maybe [V3 Float]
+loadVerts dt = do 
     VCustom (DA vertices) <- M.lookup "vertices" (dataValues dt)
-    let verts1 p = fromMaybe (V3 0 0 0) $ do
-          VFloat (DV x1) <- M.lookup "x" p
-          VFloat (DV y1) <- M.lookup "y" p
-          VFloat (DV z1) <- M.lookup "z" p
-          return (V3 x1 y1 z1)
-        verts = map verts1 vertices
-    --normals
+    let verts' = map verts1 vertices
+    return verts'
+
+loadNorms :: Data -> Maybe [V3 Float]
+loadNorms dt = do 
     let dtn = searchFieldT "MeshNormals" (dataChildren dt)
     dtn1 <- maybeM "no normals data found" dtn
     VCustom (DA normals) <- M.lookup "normals" (dataValues dtn1)
-    let norms = map verts1 normals
-    --coords
+    let norms' = map verts1 normals
+    return norms'
+
+loadCoords :: Data -> Maybe [V2 Float]
+loadCoords dt = do
     let dtt = searchFieldT "MeshTextureCoords" (dataChildren dt)
     dtt1 <- maybeM "no texcoords data found" dtt
     VCustom (DA coordinates) <- M.lookup "textureCoords" (dataValues dtt1)
@@ -206,7 +217,22 @@ loadMesh dt = do
           VFloat (DV x1) <- M.lookup "u" x 
           VFloat (DV y1) <- M.lookup "v" x 
           return (V2 x1 y1)
-        coords = map coords1 coordinates
+        coords' = map coords1 coordinates
+    return coords'
+
+
+-- load Mesh with 3-indexed faces and vertex normals
+-- all incorrect vertices become (0 0 0)
+loadMesh :: Data -> Maybe Mesh
+loadMesh dt = do
+    --faces
+    inds <- loadInds dt
+    --vertices
+    verts <- loadVerts dt
+    --normals
+    norms <- loadNorms dt
+    --coords
+    coords <- loadCoords dt
     -- gluing together
     indlist <- forM inds $ \case
       [a, b, c] -> return (fromIntegral <$> V3 a b c)

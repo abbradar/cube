@@ -17,5 +17,5 @@ uniform DirectionalLight sunLight;
 void main()
 {
   float diffuseint = max(0.0, dot(normalize(onorm),  -sunLight.direction));
-  color = texture(tex, ftexcoord)*(sunLight.ambient*sunLight.color + diffuseint, 1.0);
+  color = vec4(texture(tex, ftexcoord).rgb*(sunLight.ambient*sunLight.color+diffuseint), 1.0);
 }
