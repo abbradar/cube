@@ -74,8 +74,8 @@ data SVertexD = SVertexD { sposition :: !F3
                          }
              deriving (Generic, Show, Eq, Read)
 
-data BonesData = BonesData { name :: ByteString
-                           , weights :: [(Int, Float)]
+data BonesData = BonesData { bname :: ByteString
+                           , bweights :: [(Int, Float)]
                            , boffset :: MF44
                            }
                deriving (Generic, Show, Eq, Read)
@@ -241,12 +241,12 @@ loadBones dt = do
     when (nbones > 4) $ fail "more than 4 bones per vertex"
     mapM loadWeights $ filter (\dt' -> dataTemplate dt' == "SkinWeights") $ dataChildren dt
 
-bonesToVertices :: Int -> [[(Int, Float)]] -> [Bones]
+bonesToVertices :: Int -> [BonesData] -> [Bones]
 bonesToVertices nverts bones = VU.toList $ VU.create $ do
   res <- VUM.replicate nverts $ V4 (0, 0) (0, 0) (0, 0) (0, 0)
   indices <- VUM.replicate nverts (0 :: Int)
   forM_ (zip [0..] bones) $ \(boneIdx, bone) -> do
-    forM_ bone $ \(vertIdx, f) -> do
+    forM_ (bweights bone) $ \(vertIdx, f) -> do
       -- FIXME: check that vertIdx is okay and fail gracefully
       lastIdx <- VUM.read indices vertIdx
       VUM.write indices vertIdx (lastIdx + 1)
