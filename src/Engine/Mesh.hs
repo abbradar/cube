@@ -29,6 +29,8 @@ import Foreign.Storable (Storable(..))
 import GHC.Generics (Generic(..))
 import Data.Vector.Storable (Vector)
 import qualified Data.Vector.Storable as VS
+import qualified Data.Vector.Unboxed as VU
+import qualified Data.Vector.Unboxed.Mutable as VUM
 import qualified Data.Scientific as S
 import Text.Trifecta.Parser (parseFromFile)
 import Graphics.Caramia
@@ -36,6 +38,7 @@ import Linear.V2
 import Linear.V3
 import Linear.V4
 import Linear.Matrix
+import Foreign.Storable.Tuple ()
 
 import Foreign.Storable.Generic
 import Data.Wavefront
@@ -53,8 +56,7 @@ sizeOfV vec = sizeOf (undefined :: a) * VS.length vec
 
 type Vert = V2 F3
 type Ind = I3
-type BoneInd = I4
-type BoneWghts = F4
+type Bones = V4 (Int, Float)
 
 
 -- vertex with coords, normals and texture coords, the default one
@@ -68,12 +70,15 @@ data VertexD = VertexD { position :: !F3
 data SVertexD = SVertexD { sposition :: !F3
                          , snormal :: !F3
                          , stexcoords :: !F2
-                         , binds :: !BoneInd
-                         , bwghts :: !BoneWghts
+                         , bones :: !Bones
                          }
              deriving (Generic, Show, Eq, Read)
 
-
+data BonesData = BonesData { name :: ByteString
+                           , weights :: [(Int, Float)]
+                           , boffset :: MF44
+                           }
+               deriving (Generic, Show, Eq, Read)
 
 instance Storable VertexD where
   peek = gPeek
@@ -134,10 +139,7 @@ loadFrameX tmpls path = do
 
 -- searches in the list of data an element with coinciding template
 searchFieldT :: ByteString -> [Data] -> Maybe Data
-searchFieldT _ [] = Nothing
-searchFieldT nm (dt:dts)
-  | dataTemplate dt /= TName nm = searchFieldT nm dts
-  | otherwise = Just dt
+searchFieldT nm = listToMaybe . filter (\dt -> dataTemplate dt == TName nm)
 
 loadFrameTree :: Data -> Maybe (Tree Frame)
 loadFrameTree dt
@@ -146,20 +148,20 @@ loadFrameTree dt
   where
       fname = fromDName <$> dataName dt
       -- if fails to find one, sets to identity
-      ftransform = getMatrix $ searchFieldT "FrameTransformMatrix" (dataChildren dt)
+      ftransform = getMatrix $ searchFieldT "FrameTransformMatrix" $ dataChildren dt
       fchildren = loadFrameTrees $ dataChildren dt
-      meshdt = searchFieldT "Mesh" (dataChildren dt)
+      meshdt = searchFieldT "Mesh" $ dataChildren dt
       fmesh = meshdt >>= loadMesh
       tname = do
         mdt <- meshdt
-        ml <- searchFieldT "MeshMaterialList" (dataChildren mdt)
+        ml <- searchFieldT "MeshMaterialList" $ dataChildren mdt
         loadMaterial ml
       
 
 getMatrix :: Maybe Data -> MF44
 getMatrix Nothing = identity
 getMatrix (Just d) = fromMaybe (error "invalid transform matrix") $ do
-    VCustom (DV data1) <- M.lookup "frameMatrix" (dataValues d)
+    VCustom (DV data1) <- M.lookup "frameMatrix" $ dataValues d
     VFloat (DA vals) <- M.lookup "matrix" data1
     let [a11,a12,a13,a14,a21,a22,a23,a24,a31,a32,a33,a34,a41,a42,a43,a44] = vals
     return  $ V4 (V4 a11 a12 a13 a14) (V4 a21 a22 a23 a24) (V4 a31 a32 a33 a34) (V4 a41 a42 a43 a44)
@@ -167,8 +169,8 @@ getMatrix (Just d) = fromMaybe (error "invalid transform matrix") $ do
 -- XXX: as for now only loads the texture filename from the ONE material
 loadMaterial :: Data -> Maybe ByteString
 loadMaterial dt = do
-    ml <- (searchFieldT "Material" (dataChildren dt))
-    tname <- searchFieldT "TextureFilename" (dataChildren ml)
+    ml <- searchFieldT "Material" $ dataChildren dt
+    tname <- searchFieldT "TextureFilename" $ dataChildren ml
     VString (DV nm) <- M.lookup "filename" $ dataValues ( tname )
     return nm
 
@@ -180,7 +182,7 @@ maybeM _ (Just a) = return a
 -- functions for mesh loading
 loadInds :: Data -> Maybe [[Word32]]
 loadInds dt = do
-    VCustom (DA faces) <- M.lookup "faces" (dataValues dt)
+    VCustom (DA faces) <- M.lookup "faces" $ dataValues dt
     let inds1 x = fromMaybe [] $ do
           VDWord (DA ins) <- M.lookup "faceVertexIndices" x 
           return ins
@@ -195,24 +197,24 @@ verts1 p = fromMaybe (V3 0 0 0) $ do
     return (V3 x1 y1 z1)
 
 loadVerts :: Data -> Maybe [V3 Float]
-loadVerts dt = do 
-    VCustom (DA vertices) <- M.lookup "vertices" (dataValues dt)
+loadVerts dt = do
+    VCustom (DA vertices) <- M.lookup "vertices" $ dataValues dt
     let verts' = map verts1 vertices
     return verts'
 
 loadNorms :: Data -> Maybe [V3 Float]
 loadNorms dt = do 
-    let dtn = searchFieldT "MeshNormals" (dataChildren dt)
+    let dtn = searchFieldT "MeshNormals" $ dataChildren dt
     dtn1 <- maybeM "no normals data found" dtn
-    VCustom (DA normals) <- M.lookup "normals" (dataValues dtn1)
+    VCustom (DA normals) <- M.lookup "normals" $ dataValues dtn1
     let norms' = map verts1 normals
     return norms'
 
 loadCoords :: Data -> Maybe [V2 Float]
 loadCoords dt = do
-    let dtt = searchFieldT "MeshTextureCoords" (dataChildren dt)
+    let dtt = searchFieldT "MeshTextureCoords" $ dataChildren dt
     dtt1 <- maybeM "no texcoords data found" dtt
-    VCustom (DA coordinates) <- M.lookup "textureCoords" (dataValues dtt1)
+    VCustom (DA coordinates) <- M.lookup "textureCoords" $ dataValues dtt1
     let coords1 x = fromMaybe (V2 0 0) $ do
           VFloat (DV x1) <- M.lookup "u" x 
           VFloat (DV y1) <- M.lookup "v" x 
@@ -220,6 +222,43 @@ loadCoords dt = do
         coords' = map coords1 coordinates
     return coords'
 
+loadWeights :: Data -> Maybe BonesData
+loadWeights dt = do
+    VString (DV bnm) <- M.lookup "transformNodeName" $ dataValues dt
+    VDWord (DA binds) <- M.lookup "vertexIndices" $ dataValues dt
+    VDWord (DA bweights) <- M.lookup "weights" $ dataValues dt
+    VDWord (DA boffset) <- M.lookup "matrixOffset" $ dataValues dt
+    VFloat (DA vals) <- M.lookup "matrix" $ dataValues dt
+    let [a11,a12,a13,a14,a21,a22,a23,a24,a31,a32,a33,a34,a41,a42,a43,a44] = vals
+    let boffset' = V4 (V4 a11 a12 a13 a14) (V4 a21 a22 a23 a24) (V4 a31 a32 a33 a34) (V4 a41 a42 a43 a44)
+    return $ BonesData bnm (zip (map fromIntegral binds) (map fromIntegral bweights)) boffset'
+
+loadBones :: Data -> Maybe [BonesData]
+loadBones dt = do
+    let dtt = searchFieldT "XSkinMeshHeader" $ dataChildren dt
+    dtt1 <- maybeM "no skin header found" dtt
+    VDWord (DV nbones) <- M.lookup "nMaxSkinWeightsPerVertex" $ dataValues dtt1
+    when (nbones > 4) $ fail "more than 4 bones per vertex"
+    mapM loadWeights $ filter (\dt' -> dataTemplate dt' == "SkinWeights") $ dataChildren dt
+
+bonesToVertices :: Int -> [[(Int, Float)]] -> [Bones]
+bonesToVertices nverts bones = VU.toList $ VU.create $ do
+  res <- VUM.replicate nverts $ V4 (0, 0) (0, 0) (0, 0) (0, 0)
+  indices <- VUM.replicate nverts (0 :: Int)
+  forM_ (zip [0..] bones) $ \(boneIdx, bone) -> do
+    forM_ bone $ \(vertIdx, f) -> do
+      -- FIXME: check that vertIdx is okay and fail gracefully
+      lastIdx <- VUM.read indices vertIdx
+      VUM.write indices vertIdx (lastIdx + 1)
+      let n = (boneIdx, f)
+          modifyBones (V4 a b c d) = case lastIdx of
+            0 -> V4 n b c d
+            1 -> V4 a n c d
+            2 -> V4 a b n d
+            3 -> V4 a b c n
+            _ -> error "modifyBones: impossible"
+      VUM.modify res modifyBones vertIdx
+  return res
 
 -- load Mesh with 3-indexed faces and vertex normals
 -- all incorrect vertices become (0 0 0)
