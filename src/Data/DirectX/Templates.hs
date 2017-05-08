@@ -11,13 +11,11 @@ import qualified Data.Set as S
 import Data.UUID.Types (UUID)
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.State
-import Text.Parser.Combinators
-import Text.Parser.Token
 
 import Data.DirectX.Core
 import Data.DirectX.Data
 
-type XTParser a = forall m. XParsing m => StateT (Map MName Type) (XParserT m) a
+type XTParser a =  StateT (Map MName Type) XParser a
 
 guid' :: XTParser UUID
 guid' = lift guid
@@ -25,8 +23,26 @@ guid' = lift guid
 name' :: XTParser ByteString
 name' = lift name
 
+symbol' :: ByteString -> XTParser ByteString
+symbol' str = lift $ symbol str
+
+symbolSep' :: ByteString -> XTParser ByteString
+symbolSep' str = lift $ symbolSep str
+
+ciSymbolSep' :: ByteString -> XTParser ByteString
+ciSymbolSep' str = lift $ ciSymbolSep str
+
+symChar' :: Char -> XTParser Char
+symChar' chr = lift $ symChar chr
+
+brackets :: XTParser a -> XTParser a
+brackets parser = lift (symChar '[') *> parser <* lift (symChar ']')
+
+braces :: XTParser a -> XTParser a
+braces parser = lift (symChar '{') *> parser <* lift (symChar '}')
+
 valueType :: XTParser ValueType
-valueType = foldr ((<|>) . tryName) mzero
+valueType = foldr (\(sym, typ) s -> s <|> (typ <$ ciSymbolSep' sym)) mzero
         [ ("WORD", Word)
         , ("DWORD", DWord)
         , ("FLOAT", Float)
@@ -37,10 +53,7 @@ valueType = foldr ((<|>) . tryName) mzero
         , ("STRING", String)
         ]
         <|> custom
-        <?> "value type"
-  where tryName (s, t) = try $ t <$ ciSymbol s
-
-        custom = do
+  where custom = do
           tn <- TName <$> name'
           ds <- lift get
           unless (tn `M.member` dxTemplates ds) $ fail "valueType: unknown type name"
@@ -61,25 +74,22 @@ refDimension = do
   return n
 
 dimension :: XTParser Dimension
-dimension = brackets $     (DConst <$> fromIntegral <$> natural)
-                       <|> (DRef <$> refDimension)
-            <?> "dimension"
+dimension = brackets $     (DConst <$> lift decimalLiteral)
+                        <|> (DRef <$> refDimension)
 
 arrayMember :: XTParser (Type, MName)
 arrayMember = do
-  _ <- try $ textSymbol "array"
+  _ <- symbolSep' "array"
   t <- valueType
   n <- MName <$> name'
   ds <- some dimension
   return (Array t ds, n)
-  <?> "array member"
 
 valueMember :: XTParser (Type, MName)
 valueMember = do
   t <- valueType
   n <- MName <$> name'
   return (Value t, n)
-  <?> "value member"
   
 member :: XTParser (Type, MName)
 member = do
@@ -88,7 +98,6 @@ member = do
   when (n `M.member` ns) $ fail "member: repeating member name"
   put $ M.insert n t ns
   return r
-  <?> "member"
 
 restrictedName :: XTParser TName
 restrictedName = do
@@ -101,26 +110,24 @@ restrictedName = do
     _ -> return n
 
 restriction :: XTParser Restriction
-restriction = brackets ((Opened <$ textSymbol "...") <|> (Restricted <$> S.fromList <$> commaSep1 restrictedName))
+restriction = brackets ((Opened <$ symbol' "...") <|> (Restricted <$> S.fromList <$> restrictedName `sepBy1` symChar' ','))
               <|> pure Closed
-              <?> "restriction"
 
-template :: XParsing m => XParserT m (TName, TemplateData)
-template = do
-  _ <- try $ textSymbol "template"
+template :: Bool -> XParser (TName, TemplateData)
+template allowRedefinition = do
+  _ <- symbol "template"
   tname <- TName <$> name
-  t <- braces $ flip evalStateT M.empty $ do
+  t <- flip evalStateT M.empty $ braces $ do
     typeGuid <- guid'
-    typeMembers <- many (member <* semi)
+    typeMembers <- many (member <* symChar' ';')
     typeRestriction <- restriction
     return TemplateData {..}
 
   ts <- get
-  when (tname `M.member` dxTemplates ts) $ fail "template: repeating template name"
-  when (typeGuid t `S.member` dxTemplateGuids ts) $ fail "template: repeating GUID"
+  when (not allowRedefinition) $ do
+    when (tname `M.member` dxTemplates ts) $ fail "template: repeating template name"
+    when (typeGuid t `S.member` dxTemplateGuids ts) $ fail "template: repeating GUID"
   put ts { dxTemplates = M.insert tname (t, values t) $ dxTemplates ts
          , dxTemplateGuids = S.insert (typeGuid t) $ dxTemplateGuids ts
          }
   return (tname, t)
-
-  <?> "template"

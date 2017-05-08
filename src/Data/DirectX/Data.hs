@@ -10,50 +10,46 @@ import Control.Applicative
 import qualified Data.Map as M
 import qualified Data.Set as S
 import Control.Monad.Trans.State
-import Text.Parser.Combinators
-import Text.Parser.Token
 
 import Data.DirectX.Core
 
-type ValueParser m = forall a. m a -> m (ValueData a)
+braces :: XParser a -> XParser a
+braces parser = symChar '{' *> parser <* symChar '}'
 
-one :: XParsing m => ValueParser m
+type ValueParser = forall a. XParser a -> XParser (ValueData a)
+
+one :: ValueParser
 one p = DV <$> p
 
-array :: XParsing m => Int -> ValueParser m
+array ::  Int -> ValueParser
 array n p = do
-  r <- commaSep p
+  r <- p `sepBy` symChar ','
   unless (length r == n) $ fail "array: invalid length"
   return $ DA r
-  <?> "array"
 
-number :: (Floating a, XParsing m) => m a
-number = either fromIntegral (fromRational . toRational) <$> integerOrScientific
+value :: ValueParser -> ValueType -> XParser Value
+value p typ = case typ of
+  Word -> VWord <$> p decimalLiteral
+  DWord -> VDWord <$> p decimalLiteral
+  Float -> VFloat <$> p (fromRational <$> toRational <$> doubleLiteral)
+  Double -> VDouble <$> p doubleLiteral
+  Char -> VChar <$> p signedDecLiteral
+  UChar -> VByte <$> p decimalLiteral
+  Byte -> VByte <$> p decimalLiteral
+  String -> VString <$> p stringLiteral
+  Custom n -> do
+    ts <- get
+    VCustom <$> p (snd $ dxTemplates ts M.! n)
 
-value :: XParsing m => ValueParser (XParserT m) -> ValueType -> XParserT m Value
-value p Word = VWord <$> p (fromIntegral <$> natural)
-value p DWord = VDWord <$> p (fromIntegral <$> natural)
-value p Float = VFloat <$> p number
-value p Double = VDouble <$> p number
-value p Char = VChar <$> p (fromIntegral <$> integer)
-value p UChar = VByte <$> p (fromIntegral <$> natural)
-value p Byte = VByte <$> p (fromIntegral <$> natural)
-value p String = VString <$> p stringLiteral
-value p (Custom n) = do
-  ts <- get
-  VCustom <$> p (snd $ dxTemplates ts M.! n)
-
-values :: XParsing m => TemplateData -> XParserT m Values
-values tmpl = foldM (\ms (t, n) -> member ms n t <* semi) M.empty $ typeMembers tmpl
+values ::  TemplateData -> XParser Values
+values tmpl = foldM (\ms (t, n) -> member ms n t <* symChar ';') M.empty $ typeMembers tmpl
   where member ms n (Value v) = do
           r <- value one v
           return $ M.insert n r ms
-          <?> "single value"
         member ms n (Array v dims) = do
           let totalDims = product $ map (realize ms) dims
           r <- value (array totalDims) v
           return $ M.insert n r ms
-          <?> "array value"
 
         realize _ (DConst i) = i
         realize ms (DRef n) = extractNum (ms M.! n)
@@ -64,7 +60,7 @@ values tmpl = foldM (\ms (t, n) -> member ms n t <* semi) M.empty $ typeMembers 
         extractNum (VByte (DV i)) = fromIntegral i
         extractNum _ = error "extractNum: impossible"
 
-children :: XParsing m => Restriction -> XParserT m [Data]
+children :: Restriction -> XParser [Data]
 children Closed = return []
 children Opened = many childObject
 children (Restricted allowed) = many $ do
@@ -72,10 +68,10 @@ children (Restricted allowed) = many $ do
   unless (dataTemplate obj `S.member` allowed) $ fail "children: child data of this type is not allowed"
   return obj
 
-childObject :: XParsing m => XParserT m Data
+childObject :: XParser Data
 childObject = object <|> nameReference <|> guidReference
 
-nameReference :: XParsing m => XParserT m Data
+nameReference :: XParser Data
 nameReference = braces $ do
   dname <- DName <$> name
   dguid <- optional guid
@@ -84,18 +80,16 @@ nameReference = braces $ do
     (Nothing, _) -> fail "nameReference: unknown name"
     (Just d, Just myid) | dataGuid d /= Just myid -> fail "nameReference: invalid GUID"
     (Just d, _) -> return d
-  <?> "nameReference"
 
-guidReference :: XParsing m => XParserT m Data
+guidReference ::  XParser Data
 guidReference = braces $ do
   dguid <- guid
   ts <- get
   case M.lookup dguid $ dxGuidObjects ts of
     Nothing -> fail "guidReference: unknown guid"
     Just d -> return d
-  <?> "guidReference"
 
-object :: XParsing m => XParserT m Data
+object ::  XParser Data
 object = do
   dataTemplate <- TName <$> name
   (tdata, vparser) <- do
@@ -121,4 +115,3 @@ object = do
         when (dguid `M.member` dxGuidObjects ts) $ fail "object: duplicate GUID"
         put ts { dxGuidObjects = M.insert dguid res $ dxGuidObjects ts }
     return res
-  <?> "object"

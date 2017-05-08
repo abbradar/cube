@@ -6,6 +6,7 @@ module Data.DirectX
        , directX'
        ) where
 
+import Prelude hiding (take)
 import Data.Maybe
 import Control.Applicative
 import Control.Monad
@@ -16,24 +17,21 @@ import qualified Data.Set as S
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as B
 import Control.Monad.Trans.State
-import Text.Parser.Combinators
-import Text.Parser.Char
-import Text.Parser.Token
+import Control.Monad.Trans.Class
+import Data.Attoparsec.ByteString.Char8
 
-import Text.Parser.Comments
 import Data.DirectX.Core
 import Data.DirectX.Templates
 import Data.DirectX.Data
-
-type XIParser a = forall m. XParsing m => XParserT (LineCommentT "#" (LineCommentT "//" m)) a
 
 data TopLevel = XTemplate (TName, TemplateData)
               | XData Data
               deriving (Show, Eq)
 
-topLevel :: XIParser TopLevel
-topLevel =     (XTemplate <$> template)
-           <|> (XData <$> object)
+topLevel :: Bool -> XParser TopLevel
+topLevel allowRedefinition =
+      (XTemplate <$> template allowRedefinition)
+  <|> (XData <$> object)
 
 data XHeader = XHeader { majorVersion :: Int
                        , minorVersion :: Int
@@ -42,18 +40,18 @@ data XHeader = XHeader { majorVersion :: Int
                        }
              deriving (Show, Eq)
 
-header :: XParsing m => m XHeader
+header :: Parser XHeader
 header = do
-  _ <- text "xof "
+  _ <- string "xof "
   majorVersion <- num 2
   minorVersion <- num 2
-  formatType <- B.pack <$> filter (/= ' ') <$> mapM (const anyChar) [1..4::Int]
+  formatType <- B.filter (/= ' ') <$> take 4
   floatSize <- num 4
   return XHeader {..}
 
   where num (sz :: Int) = do
-          s <- dropWhile (== ' ') <$> mapM (const anyChar) [1..sz]
-          case readMaybe s of
+          s <- B.filter (/= ' ') <$> take sz
+          case readMaybe $ B.unpack s of
             Just n -> return n
             Nothing -> fail "num: invalid number"
 
@@ -65,11 +63,11 @@ data DirectX = DirectX { xHeader :: XHeader
                        }
              deriving (Show, Eq)
 
-directX :: XParsing m => m DirectX
-directX = directX' M.empty
+directX :: Bool -> Parser DirectX
+directX allowRedefinition = directX' allowRedefinition M.empty
 
-directX' :: XParsing m => XTemplates -> m DirectX
-directX' knownTemplates = do
+directX' :: Bool -> XTemplates -> Parser DirectX
+directX' allowRedefinition knownTemplates = do
   xHeader@(XHeader {..}) <- header
   unless (majorVersion == 3 && minorVersion == 3 && formatType == "txt" && floatSize == 32) $ fail "directX: unsupported format"
 
@@ -79,10 +77,10 @@ directX' knownTemplates = do
                               , dxGuidObjects = M.empty
                               }
 
-  runLineCommentT $ runLineCommentT $ flip evalStateT initState $ do
-    _ <- optional someSpace
-    topLevels <- many topLevel
-    eof
+  flip evalStateT initState $ do
+    skipSeparators
+    topLevels <- many $ topLevel allowRedefinition
+    lift endOfInput
     let xTemplates = M.fromList $ mapMaybe (\case XTemplate t -> Just t; XData _ -> Nothing) topLevels
     let xData = mapMaybe (\case XData d -> Just d; XTemplate _ -> Nothing) topLevels
     return DirectX {..}

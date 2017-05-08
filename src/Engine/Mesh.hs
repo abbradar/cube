@@ -6,6 +6,7 @@ module Engine.Mesh
        , FrameBuffer
        , vertices
        , indices
+       , parseFromFile
        , Bone
        , Bones
        , generateSkeleton
@@ -39,13 +40,14 @@ import qualified Data.Vector.Storable as VS
 import qualified Data.Vector.Unboxed as VU
 import qualified Data.Vector.Unboxed.Mutable as VUM
 import qualified Data.Scientific as S
-import Text.Trifecta.Parser (parseFromFile)
+import Data.Attoparsec.ByteString.Char8 (Parser, IResult(..), parse)
 import Graphics.Caramia
 import Linear.V2
 import Linear.V3
 import Linear.V4
 import Linear.Matrix
 import Foreign.Storable.Tuple ()
+import Text.InterpolatedString.Perl6 (qq)
 
 import Foreign.Storable.Generic
 import Data.Wavefront
@@ -178,6 +180,24 @@ type FrameBufferTree = Tree FrameBuffer
 ------------------------------ LOADING ------------------------------------
 ---------------------------------------------------------------------------
 
+parseFromFile :: Parser a -> FilePath -> IO a
+parseFromFile parser path = do
+  contents <- B.readFile path
+
+  let tryParse _ (Fail left stack err) = do
+        let pos = B.length contents - B.length left
+            part = B.take 10 left
+        fail [qq|Failed to parse {path} at position {pos} ({part}), stack {stack}: {err}|]
+      tryParse allowPartial (Partial f)
+        | allowPartial = tryParse False $ f ""
+        | otherwise = error "parseFromFile: impossible"
+      tryParse _ (Done "" r) = return r
+      tryParse _ (Done left _) = do
+        let pos = B.length contents - B.length left
+            part = B.take 10 left
+        fail [qq|Failed to parse {path} at position {pos} ({part}): can't parse more|]
+
+  tryParse True $ parse parser contents
 
 loadFrameIX :: XTemplates -> FilePath -> IO (Tree Frame)
 loadFrameIX tmpls path = loadFrameX' tmpls path loadIMesh
@@ -187,22 +207,19 @@ loadFrameSX tmpls path = loadFrameX' tmpls path $ loadSMesh
 
 loadFrameX' :: XTemplates -> FilePath -> (Data -> Maybe Mesh) -> IO (Tree Frame)
 loadFrameX' tmpls path ldMesh = do
-  vals <- parseFromFile (directX' tmpls) path
-  case vals of
-    Nothing -> fail $ "loadMesh: failed to load " ++ path
-    Just r -> do
-      let frame = do
-            -- XXX: ignores all frames except the first one
-            fs <- mapM (loadFrameTree' ldMesh) $ filter (\x -> dataTemplate x == "Frame") $ xData r 
-            let root = Frame { fmesh = Nothing
-                             , fname = Nothing
-                             , tname = Nothing
-                             , ftransform = identity
-                             }
-            return $ Node root fs
-      case frame of
-        Nothing -> fail "cannot find frames"
-        Just f -> return f
+  vals <- parseFromFile (directX' True tmpls) path
+  let frame = do
+        -- XXX: ignores all frames except the first one
+        fs <- mapM (loadFrameTree' ldMesh) $ filter (\x -> dataTemplate x == "Frame") $ xData vals
+        let root = Frame { fmesh = Nothing
+                         , fname = Nothing
+                         , tname = Nothing
+                         , ftransform = identity
+                         }
+        return $ Node root fs
+  case frame of
+    Nothing -> fail "cannot find frames"
+    Just f -> return f
 
 -- searches in the list of data an element with coinciding template
 searchFieldT :: ByteString -> [Data] -> Maybe Data
@@ -391,18 +408,15 @@ loadFrameTrees' loadMesh dt = mapMaybe (loadFrameTree' loadMesh) dt
 loadMeshOBJ :: FilePath -> IO IMesh
 loadMeshOBJ path = do
   vals <- parseFromFile wavefrontOBJ path
-  case vals of
-    Nothing -> fail "loadMeshOBJ: failed to load mesh"
-    Just r -> do
-      let WFModel {..} = extractModel r
-          indlist = map (fmap fromIntegral) wfIndices
-          --TODO: check different length
-          convertF = map (fmap S.toRealFloat)
-          vertlist = zipWith3 VertexD (convertF wfVertices) (convertF wfNormals) (repeat (V2 0.0 0.0))
-          --vertlist = zip wfVertices wfNormals
-      return IMesh { vertices = VS.fromList vertlist
-                  , indices = VS.fromList indlist
-                  }
+  let WFModel {..} = extractModel vals
+      indlist = map (fmap fromIntegral) wfIndices
+      --TODO: check different length
+      convertF = map (fmap S.toRealFloat)
+      vertlist = zipWith3 VertexD (convertF wfVertices) (convertF wfNormals) (repeat (V2 0.0 0.0))
+      --vertlist = zip wfVertices wfNormals
+  return IMesh { vertices = VS.fromList vertlist
+               , indices = VS.fromList indlist
+               }
 
 ---------------------------------------------------------------------------
 ---------------------------- INITIALIZATION -------------------------------

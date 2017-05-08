@@ -16,8 +16,7 @@ cabal-version:       >=1.10
 
 executable triangle
   main-is:             Main.hs
-  other-modules:       Text.Parser.Comments
-                     , Data.Wavefront
+  other-modules:       Data.Wavefront
                      , Data.DirectX.Core
                      , Data.DirectX.Templates
                      , Data.DirectX.Data
@@ -45,8 +44,8 @@ executable triangle
                      , FlexibleContexts
                      , FlexibleInstances
   build-depends:       base >= 4.7
-                     , text
                      , bytestring
+                     , text
                      , sdl2
                      , caramia
                      , c-storable-deriving
@@ -59,13 +58,10 @@ executable triangle
                      , transformers
                      , containers
                      , interpolatedstring-perl6
+                     , attoparsec
                      , scientific
-                     , trifecta
-                     , parsers
-                     , charset
                      , uuid-types
-                     , case-insensitive
                      , storable-tuple
   hs-source-dirs:      src
-  ghc-options:         -Wall -threaded
+  ghc-options:         -Wall -threaded -auto
   default-language:    Haskell2010

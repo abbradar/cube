@@ -6,14 +6,13 @@ module Data.Wavefront
        ) where
 
 import Control.Applicative
+import Control.Monad
 import GHC.Generics (Generic)
+import Data.ByteString (ByteString)
 import Data.Scientific (Scientific)
 import Data.Default
 import Linear.V3 (V3(..))
-import Text.Parser.Combinators
-import Text.Parser.Token
-
-import Text.Parser.Comments
+import Data.Attoparsec.ByteString.Char8
 
 type F3 = V3 Scientific
 type I3 = V3 Integer
@@ -23,22 +22,36 @@ data WFValue = WFVertex F3
              | WFFace I3
              deriving (Show, Eq)
 
-type OBJParser a = forall m. (Monad m, TokenParsing m) => LineCommentT "#" m a
+skipLineComment :: Parser ()
+skipLineComment = void $ string "//" *> skipWhile (/= '\n') *> char '\n'
 
-number :: OBJParser Scientific
-number = either fromIntegral id <$> integerOrScientific
+skipSeparators :: Parser ()
+skipSeparators = void $ many $ skipLineComment <|> skipSpace
 
-pointF3 :: OBJParser F3
-pointF3 = V3 <$> number <*> number <*> number <?> "3-point"
+token :: Parser a -> Parser a
+token parser = parser <* skipSeparators
 
-pointI3 :: OBJParser I3
-pointI3 = V3 <$> natural <*> natural <*> natural <?> "3-index vector"
+symbol :: ByteString -> Parser ByteString
+symbol t = token (string t <?> "symbol")
 
-wavefrontOBJ :: (Monad m, TokenParsing m) => m [WFValue]
-wavefrontOBJ = runLineCommentT $ optional someSpace *> many line <* eof
-  where line =     WFNormal <$> (symbol "vn" *> pointF3 <?> "normal")
-               <|> WFVertex <$> (symbol "v" *> pointF3 <?> "vertex")
-               <|> WFFace <$> (symbol "f" *> pointI3 <?> "face")
+scientific' :: Parser Scientific
+scientific' = token scientific
+
+decimal' :: Integral a => Parser a
+decimal' = token decimal
+
+pointF3 :: Parser F3
+pointF3 = V3 <$> scientific' <*> scientific' <*> scientific' <?> "3-point"
+
+pointI3 :: Parser I3
+pointI3 = V3 <$> decimal' <*> decimal' <*> decimal' <?> "3-index vector"
+
+wavefrontOBJ :: Parser [WFValue]
+wavefrontOBJ = skipSeparators *> many line <* endOfInput
+  where line' =     WFNormal <$> (symbol "vn" *> pointF3 <?> "normal")
+                <|> WFVertex <$> (symbol "v" *> pointF3 <?> "vertex")
+                <|> WFFace <$> (symbol "f" *> pointI3 <?> "face")
+        line = line' <* skipSeparators
 
 data WFModel = WFModel { wfNormals :: [F3]
                        , wfVertices :: [F3]

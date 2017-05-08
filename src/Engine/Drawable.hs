@@ -11,7 +11,6 @@ module Engine.Drawable
   ) where
 
 import Data.DirectX
-import qualified SDL as S
 import qualified Graphics.Caramia as C
 
 import Engine.Types

@@ -4,7 +4,6 @@ import Data.Monoid
 import qualified Data.Text.IO as T
 import System.Environment
 import qualified Data.Map as M
-import Data.Tree (Tree)
 import Data.Set (Set)
 import qualified Data.Set as S
 import Data.Default
@@ -15,12 +14,11 @@ import Graphics.Caramia hiding (normalize, draw)
 import qualified Graphics.Caramia as Car
 import SDL hiding (initialize)
 import qualified SDL 
-import Text.Trifecta (parseFromFile)
 
 import Engine.Drawable
-import qualified Engine.Drawable as GC
 import Engine.Camera
 import Engine.Framerate
+import Engine.Mesh
 import Data.DirectX
 
 import Debug.Trace
@@ -66,11 +64,7 @@ main = do
         path:_ -> path
   settings@(GameSettings {..}) <- read <$> readFile settingsPath
 
-  xDataTemplates <- do
-    r <- parseFromFile directX xTemplatesPath
-    case r of
-      Nothing -> fail "cannot load X templates"
-      Just r' -> return $ xTemplates r'
+  xDataTemplates <- xTemplates <$> parseFromFile (directX False) xTemplatesPath
 
   SDL.initialize [InitVideo, InitEvents]
 
