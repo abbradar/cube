@@ -1,10 +1,13 @@
 module Engine.Drawable
-  ( XObjectD
-  , XObject
+  ( ObjectD
+  , Object
+  , SObject
   , DContext(..)
   , loadFromFile
-  , initialize
-  , draw
+  , initializeI
+  , initializeS
+  , drawI
+  , drawS
   ) where
 
 import Data.DirectX
@@ -23,24 +26,42 @@ data DContext = DContext { cpl :: C.Pipeline
                          }
 
 -- should contain any type of meshes, animations, various effects
-data XObjectD = XObjectD { xframes :: FrameTree
+data ObjectD = ObjectD { frames :: FrameTree
                          , filedir :: FilePath
                          } deriving (Show, Eq, Read)
 
-data XObject = XObject { xbuffers :: FrameBufferTree
+data Object = Object { buffers :: FrameBufferTree
                        }
 
-loadFromFile :: XTemplates -> FilePath -> FilePath -> IO (XObjectD)
-loadFromFile tmpls fdir fname = do
-    xfs <- loadFrameX tmpls (fdir ++ fname)
-    return XObjectD { xframes = xfs, filedir = fdir }
+data SObject = SObject { sbuffers :: FrameBufferTree
+                       ,  bones :: Bones
+                       }
 
-initialize :: XObjectD -> IO (XObject)
-initialize objd = do
-    obj <- mapM initFBuffer (xframes objd)
-    return XObject { xbuffers = obj }
-  where
-    initFBuffer = initFrameBuffer (filedir objd)
+-- here there is a Bool variable, two paradigmas conflict, should fix it
+loadFromFile :: XTemplates -> FilePath  -> FilePath -> Bool -> IO (ObjectD)
+loadFromFile tmpls fdir fname isskinned = do
+    fs <- ldFrameX tmpls (fdir ++ fname)
+    return ObjectD { frames = fs, filedir = fdir }
+    where
+      ldFrameX = if isskinned then loadFrameSX else loadFrameIX
 
-draw :: DContext -> XObject -> C.DrawT IO ()
-draw ctxt obj = drawFrame (xbuffers obj) (cmvMLoc ctxt) (ctexLoc ctxt) (cmvM ctxt) (cpl ctxt)
+initializeI :: ObjectD -> IO (Object)
+initializeI objd = do
+    obj <- mapM initFBuffer (frames objd)
+    return Object { buffers = obj }
+    where
+      initFBuffer = initIFrameBuffer (filedir objd)
+
+initializeS :: ObjectD -> IO (SObject)
+initializeS objd = do
+    sobj <- mapM initSFBuffer (frames objd)
+    return SObject { sbuffers = sobj, bones = bns }
+    where
+      bns = generateSkeleton (frames objd)
+      initSFBuffer = initSFrameBuffer (filedir objd) (bns)
+
+drawI :: DContext -> Object -> C.DrawT IO ()
+drawI ctxt obj = drawFrame (buffers obj) (cmvMLoc ctxt) (ctexLoc ctxt) (cmvM ctxt) (cpl ctxt)
+
+drawS :: DContext -> SObject -> C.DrawT IO ()
+drawS ctxt obj = drawFrame (sbuffers obj) (cmvMLoc ctxt) (ctexLoc ctxt) (cmvM ctxt) (cpl ctxt)

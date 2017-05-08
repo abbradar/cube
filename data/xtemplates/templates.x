@@ -122,6 +122,25 @@ template MeshVertexColors
     array IndexedColor vertexColors[nVertexColors];
 }
 
+
+//template XSkinMeshHeader 
+//{ 
+//    < 3CF169CE-FF7C-44ab-93C0-F78F62D172E2 >  
+//    WORD nMaxSkinWeightsPerVertex; 
+//    WORD nMaxSkinWeightsPerFace; 
+//    WORD nBones;
+//}
+
+//template SkinWeights 
+//{ 
+//    < 6F0D123B-BAD2-4167-A0D0-80224F25FABB > 
+//    STRING transformNodeName; 
+//    DWORD nWeights; 
+//    array DWORD vertexIndices[nWeights]; 
+//    array float weights[nWeights]; 
+//    Matrix4x4 matrixOffset; 
+//} 
+
 template FloatKeys
 {
     < 10DD46A9-775B-11cf-8F52-0040333594A3 >

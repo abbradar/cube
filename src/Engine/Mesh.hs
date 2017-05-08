@@ -6,12 +6,17 @@ module Engine.Mesh
        , FrameBuffer
        , vertices
        , indices
+       , Bone
+       , Bones
+       , generateSkeleton
        , loadMeshOBJ
-       , loadFrameX
+       , loadFrameIX
+       , loadFrameSX
        , MeshBuffer
        , initMeshBuffer
        , drawMesh
-       , initFrameBuffer
+       , initIFrameBuffer
+       , initSFrameBuffer
        , drawFrame
        , FrameTree
        , FrameBufferTree
@@ -21,7 +26,9 @@ import qualified Data.Map as M
 import qualified Data.IntMap.Strict as IM
 import Data.Maybe
 import Data.Word
+import Data.List
 import Control.Monad
+import Control.Arrow
 import Codec.Picture
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as B
@@ -56,7 +63,13 @@ sizeOfV vec = sizeOf (undefined :: a) * VS.length vec
 
 type Vert = V2 F3
 type Ind = I3
-type Bones = V4 (Int, Float)
+type VSkinData = V4 (Word8, Float)
+
+-- skin data for loading
+data SkinData = SkinData { sdvertices :: [V4 (Word8, Float)]
+                         , sdbones :: [(ByteString, MF44)]
+                         }
+             deriving (Generic, Show, Eq, Read)
 
 
 -- vertex with coords, normals and texture coords, the default one
@@ -70,15 +83,27 @@ data VertexD = VertexD { position :: !F3
 data SVertexD = SVertexD { sposition :: !F3
                          , snormal :: !F3
                          , stexcoords :: !F2
-                         , bones :: !Bones
+                         , bones :: !VSkinData
                          }
              deriving (Generic, Show, Eq, Read)
 
+-- bones data for loading
 data BonesData = BonesData { bname :: ByteString
                            , bweights :: [(Int, Float)]
                            , boffset :: MF44
                            }
                deriving (Generic, Show, Eq, Read)
+
+-- bone for skeleton (name, dynamic matrix)
+-- TODO: make an array for fast access and mutability
+type Bone  = (ByteString, MF44)
+type Bones = [Bone]
+
+-- mesh bone info: (id, static matrix)
+-- TODO: make an array for fast access
+type BoneInfo = (Int, MF44)
+type BonesInfo = [BoneInfo]
+
 
 instance Storable VertexD where
   peek = gPeek
@@ -93,16 +118,28 @@ instance Storable SVertexD where
   alignment = gAlignment
 
 
-data Mesh = Mesh { vertices :: Vector VertexD
+--  "I(nanimate)Foo - S(kinned)Foo - Foo = (IF IFoo | SF SFoo) "
+
+-- mesh for static textured objects
+data IMesh = IMesh { vertices :: Vector VertexD
                  , indices :: Vector Ind
                  }
           deriving (Show, Eq, Read)
 
+-- mesh for skinned objects
 data SMesh = SMesh { svertices :: Vector SVertexD
                    , sindices :: Vector Ind
+                   , sbones :: [(ByteString, MF44)]
                    }
            deriving (Show, Eq, Read)
+-- general mesh, D for Default
+data Mesh = IM IMesh | SM SMesh
+           deriving (Show, Eq, Read)
 
+-- frame (contains any type of mesh). According to our logic all 
+-- the data about mesh except vertices is stored in frame (buffer)
+-- for instance texture, shader info, bones info (if present).
+-- Also one frame may contain only one mesh. 
 data Frame = Frame { fmesh :: Maybe Mesh
                    , fname :: Maybe ByteString
                    , tname :: Maybe ByteString
@@ -110,23 +147,53 @@ data Frame = Frame { fmesh :: Maybe Mesh
                    }
            deriving (Show, Eq, Read)
 
+-- buffer for mesh
+data MeshBuffer = MeshBuffer { mvao :: VAO
+                             , mbuffer :: Buffer
+                             , indOffset :: Int
+                             , indNumber :: Int
+                             } 
+
+instance Show MeshBuffer where
+  show buf = "MeshBuffer"
+
+-- TODO: remove unnecessary Frame information
+data IFrameBuffer = IFrameBuffer { ifframe :: Frame
+                               , ifbuffer :: Maybe MeshBuffer
+                               , iftexture :: Maybe Texture
+                               }
+data SFrameBuffer = SFrameBuffer { sfframe :: Frame
+                                 , sfbuffer :: Maybe MeshBuffer
+                                 , sfmeshbonesinfo :: BonesInfo
+                                 , sftexture :: Maybe Texture
+                                 }
+--  "I(nanimate)Foo - S(kinned)Foo - Foo = (IF IFoo | SF SFoo) "
+data FrameBuffer = IB IFrameBuffer | SB SFrameBuffer
+
+-- trees for frames
 type FrameTree = Tree Frame
 type FrameBufferTree = Tree FrameBuffer
 
-data FrameBuffer = FrameBuffer { fframe :: Frame
-                               , fbuffer :: Maybe MeshBuffer
-                               , ftexture :: Maybe Texture
-                               }
+---------------------------------------------------------------------------
+------------------------------ LOADING ------------------------------------
+---------------------------------------------------------------------------
 
-loadFrameX :: XTemplates -> FilePath -> IO (Tree Frame)
-loadFrameX tmpls path = do
+
+loadFrameIX :: XTemplates -> FilePath -> IO (Tree Frame)
+loadFrameIX tmpls path = loadFrameX' tmpls path loadIMesh
+
+loadFrameSX :: XTemplates -> FilePath -> IO (Tree Frame)
+loadFrameSX tmpls path = loadFrameX' tmpls path $ loadSMesh
+
+loadFrameX' :: XTemplates -> FilePath -> (Data -> Maybe Mesh) -> IO (Tree Frame)
+loadFrameX' tmpls path ldMesh = do
   vals <- parseFromFile (directX' tmpls) path
   case vals of
     Nothing -> fail $ "loadMesh: failed to load " ++ path
     Just r -> do
       let frame = do
             -- XXX: ignores all frames except the first one
-            fs <- mapM loadFrameTree $ filter (\x -> dataTemplate x == "Frame") $ xData r
+            fs <- mapM (loadFrameTree' ldMesh) $ filter (\x -> dataTemplate x == "Frame") $ xData r 
             let root = Frame { fmesh = Nothing
                              , fname = Nothing
                              , tname = Nothing
@@ -141,17 +208,17 @@ loadFrameX tmpls path = do
 searchFieldT :: ByteString -> [Data] -> Maybe Data
 searchFieldT nm = listToMaybe . filter (\dt -> dataTemplate dt == TName nm)
 
-loadFrameTree :: Data -> Maybe (Tree Frame)
-loadFrameTree dt
+loadFrameTree' :: (Data -> Maybe Mesh) -> Data -> Maybe (Tree Frame)
+loadFrameTree' ldMesh dt
   | dataTemplate dt == "Frame" = Just $ Node (Frame {..}) fchildren
   | otherwise = Nothing
   where
       fname = fromDName <$> dataName dt
       -- if fails to find one, sets to identity
       ftransform = getMatrix $ searchFieldT "FrameTransformMatrix" $ dataChildren dt
-      fchildren = loadFrameTrees $ dataChildren dt
+      fchildren = loadFrameTrees' ldMesh $ dataChildren dt
       meshdt = searchFieldT "Mesh" $ dataChildren dt
-      fmesh = meshdt >>= loadMesh
+      fmesh = meshdt >>= ldMesh
       tname = do
         mdt <- meshdt
         ml <- searchFieldT "MeshMaterialList" $ dataChildren mdt
@@ -159,9 +226,12 @@ loadFrameTree dt
       
 
 getMatrix :: Maybe Data -> MF44
-getMatrix Nothing = identity
-getMatrix (Just d) = fromMaybe (error "invalid transform matrix") $ do
-    VCustom (DV data1) <- M.lookup "frameMatrix" $ dataValues d
+getMatrix d = getMatrix' d "frameMatrix"
+
+getMatrix' :: Maybe Data -> ByteString -> MF44
+getMatrix' Nothing _ = identity
+getMatrix' (Just d) mname = fromMaybe (error "invalid transform matrix") $ do
+    VCustom (DV data1) <- M.lookup (MName mname) $ dataValues d
     VFloat (DA vals) <- M.lookup "matrix" data1
     let [a11,a12,a13,a14,a21,a22,a23,a24,a31,a32,a33,a34,a41,a42,a43,a44] = vals
     return  $ V4 (V4 a11 a12 a13 a14) (V4 a21 a22 a23 a24) (V4 a31 a32 a33 a34) (V4 a41 a42 a43 a44)
@@ -226,44 +296,50 @@ loadWeights :: Data -> Maybe BonesData
 loadWeights dt = do
     VString (DV bnm) <- M.lookup "transformNodeName" $ dataValues dt
     VDWord (DA binds) <- M.lookup "vertexIndices" $ dataValues dt
-    VDWord (DA bweights) <- M.lookup "weights" $ dataValues dt
-    VDWord (DA boffset) <- M.lookup "matrixOffset" $ dataValues dt
-    VFloat (DA vals) <- M.lookup "matrix" $ dataValues dt
-    let [a11,a12,a13,a14,a21,a22,a23,a24,a31,a32,a33,a34,a41,a42,a43,a44] = vals
-    let boffset' = V4 (V4 a11 a12 a13 a14) (V4 a21 a22 a23 a24) (V4 a31 a32 a33 a34) (V4 a41 a42 a43 a44)
-    return $ BonesData bnm (zip (map fromIntegral binds) (map fromIntegral bweights)) boffset'
+    VFloat (DA bweights) <- M.lookup "weights" $ dataValues dt
+    --VCustom (DV boffset) <- M.lookup "matrixOffset" $ dataValues dt
+    let boffset' = getMatrix' (Just dt) "matrixOffset"
+    return $ BonesData bnm (zip (map fromIntegral binds) (bweights)) boffset'
 
 loadBones :: Data -> Maybe [BonesData]
 loadBones dt = do
     let dtt = searchFieldT "XSkinMeshHeader" $ dataChildren dt
     dtt1 <- maybeM "no skin header found" dtt
-    VDWord (DV nbones) <- M.lookup "nMaxSkinWeightsPerVertex" $ dataValues dtt1
+    VWord (DV nbones) <- M.lookup "nMaxSkinWeightsPerVertex" $ dataValues dtt1
     when (nbones > 4) $ fail "more than 4 bones per vertex"
     mapM loadWeights $ filter (\dt' -> dataTemplate dt' == "SkinWeights") $ dataChildren dt
 
-bonesToVertices :: Int -> [BonesData] -> [Bones]
-bonesToVertices nverts bones = VU.toList $ VU.create $ do
-  res <- VUM.replicate nverts $ V4 (0, 0) (0, 0) (0, 0) (0, 0)
-  indices <- VUM.replicate nverts (0 :: Int)
-  forM_ (zip [0..] bones) $ \(boneIdx, bone) -> do
-    forM_ (bweights bone) $ \(vertIdx, f) -> do
-      -- FIXME: check that vertIdx is okay and fail gracefully
-      lastIdx <- VUM.read indices vertIdx
-      VUM.write indices vertIdx (lastIdx + 1)
-      let n = (boneIdx, f)
-          modifyBones (V4 a b c d) = case lastIdx of
-            0 -> V4 n b c d
-            1 -> V4 a n c d
-            2 -> V4 a b n d
-            3 -> V4 a b c n
-            _ -> error "modifyBones: impossible"
-      VUM.modify res modifyBones vertIdx
-  return res
+bonesToVertices :: Int -> [BonesData] -> SkinData
+
+
+bonesToVertices nverts bones =
+  SkinData { sdvertices = lst
+           , sdbones = map (\bdata -> (bname bdata, boffset bdata)) bones
+           }
+  where lst = VU.toList $ VU.create $ do
+    --      res <- VUM.replicate nverts $ V4 (0, 0) (0, 0) (0, 0) (0, 0)
+            res <- VUM.replicate nverts $ V4 (0, 0) (0, 0) (0, 0) (0, 0)
+            indices <- VUM.replicate nverts (0 :: Int)
+            forM_ (zip [0..] bones) $ \(boneIdx, bone) -> do
+              forM_ (bweights bone) $ \(vertIdx, f) -> do
+              -- FIXME: check that vertIdx is okay and fail gracefully
+                lastIdx <- VUM.read indices vertIdx
+                VUM.write indices vertIdx (lastIdx + 1)
+                let n = (boneIdx, f)
+                    modifyBones (V4 a b c d) = case lastIdx of
+                      0 -> V4 n b c d
+                      1 -> V4 a n c d
+                      2 -> V4 a b n d
+                      3 -> V4 a b c n
+                      _ -> error "modifyBones: impossible"
+                VUM.modify res modifyBones vertIdx
+            return res
+ 
 
 -- load Mesh with 3-indexed faces and vertex normals
 -- all incorrect vertices become (0 0 0)
-loadMesh :: Data -> Maybe Mesh
-loadMesh dt = do
+loadIMesh :: Data -> Maybe Mesh
+loadIMesh dt = do
     --faces
     inds <- loadInds dt
     --vertices
@@ -278,14 +354,41 @@ loadMesh dt = do
       _ -> fail "invalid points number"
     let vertlist = zipWith3 VertexD verts norms coords
 
-    return Mesh { vertices = VS.fromList vertlist
+    return $ IM IMesh { vertices = VS.fromList vertlist
                 , indices = VS.fromList indlist
                 }
 
-loadFrameTrees :: [Data] -> [Tree Frame]
-loadFrameTrees dtl = mapMaybe loadFrameTree dtl
+-- load skinned Mesh with 3-indexed faces and vertex normals
+-- all incorrect vertices become (0 0 0)
+loadSMesh :: Data -> Maybe Mesh
+loadSMesh dt = do
+    --faces
+    inds <- loadInds dt
+    --vertices
+    verts <- loadVerts dt
+    --normals
+    norms <- loadNorms dt
+    --coords
+    coords <- loadCoords dt
+    -- gluing together
+    skdata <- bonesToVertices (length verts) <$> loadBones dt
 
-loadMeshOBJ :: FilePath -> IO Mesh
+    indlist <- forM inds $ \case
+      [a, b, c] -> return (fromIntegral <$> V3 a b c)
+      _ -> fail "invalid points number"
+    let vertlist = zipWith4 SVertexD verts norms coords (sdvertices skdata)
+
+    return $ SM SMesh { svertices = VS.fromList vertlist
+                , sindices = VS.fromList indlist
+                , sbones = sdbones skdata
+                }
+
+
+
+loadFrameTrees' :: (Data -> Maybe Mesh) -> [Data] -> [Tree Frame]
+loadFrameTrees' loadMesh dt = mapMaybe (loadFrameTree' loadMesh) dt
+
+loadMeshOBJ :: FilePath -> IO IMesh
 loadMeshOBJ path = do
   vals <- parseFromFile wavefrontOBJ path
   case vals of
@@ -297,21 +400,34 @@ loadMeshOBJ path = do
           convertF = map (fmap S.toRealFloat)
           vertlist = zipWith3 VertexD (convertF wfVertices) (convertF wfNormals) (repeat (V2 0.0 0.0))
           --vertlist = zip wfVertices wfNormals
-      return Mesh { vertices = VS.fromList vertlist
+      return IMesh { vertices = VS.fromList vertlist
                   , indices = VS.fromList indlist
                   }
 
-data MeshBuffer = MeshBuffer { mvao :: VAO
-                             , mbuffer :: Buffer
-                             , indOffset :: Int
-                             , indNumber :: Int
-                             } 
+---------------------------------------------------------------------------
+---------------------------- INITIALIZATION -------------------------------
+---------------------------------------------------------------------------
 
-instance Show MeshBuffer where
-  show buf = "MeshBuffer"
+-- FIXMI (nonfinished)
+generateSkeleton :: FrameTree -> Bones
+generateSkeleton _ = undefined
+--generateSkeleton frames = conc $ map getbones frames
+--    where 
+--      getbones (fmesh Nothing) = []
+--      getbones (fmesh IM a) = []
+--      getbones (fmesh SM a) = sbones a
+
+
+
 
 initMeshBuffer :: Mesh -> IO MeshBuffer
-initMeshBuffer mesh = do
+initMeshBuffer (IM mesh) = initMeshBufferD mesh
+initMeshBuffer (SM smesh) = initMeshBufferDS smesh
+
+
+
+initMeshBufferD :: IMesh -> IO MeshBuffer
+initMeshBufferD mesh = do
   vao <- newVAO
   buff <- newBuffer defaultBufferCreation { accessHints = (Static, Draw)
                                           , size = sizeOfV (vertices mesh) + sizeOfV (indices mesh)
@@ -343,13 +459,57 @@ initMeshBuffer mesh = do
                     , indNumber = 3 * VS.length (indices mesh)
                     }
 
-drawMesh :: MeshBuffer -> Pipeline -> DrawT IO ()
-drawMesh mesh pl =
-  drawR drawCommand { primitiveType = Triangles
-                    , primitivesVAO = mvao mesh
-                    , numIndices = indNumber mesh
-                    , sourceData = PrimitivesWithIndices (mbuffer mesh) (indOffset mesh) IWord16
+initMeshBufferDS :: SMesh -> IO MeshBuffer
+initMeshBufferDS smesh = do
+  vao <- newVAO
+  buff <- newBuffer defaultBufferCreation { accessHints = (Static, Draw)
+                                          , size = sizeOfV (svertices smesh) + sizeOfV (sindices smesh)
+                                          }
+  uploadVector (svertices smesh) 0 buff
+  sourceVertexData buff defaultSourcing { components = 3
+                                        , stride = sizeOf (undefined :: SVertexD)
+                                        , attributeIndex = 0
+                                        , sourceType = SFloat
+                                        } vao
+  
+  sourceVertexData buff defaultSourcing { offset = sizeOf (undefined :: (V3 Float))
+                                        , components = 3
+                                        , stride = sizeOf (undefined :: SVertexD)
+                                        , attributeIndex = 1
+                                        , sourceType = SFloat
+                                        } vao
+  sourceVertexData buff defaultSourcing { offset = 2 * sizeOf (undefined :: (V3 Float))
+                                        , components = 2
+                                        , stride = sizeOf (undefined :: SVertexD)
+                                        , attributeIndex = 2
+                                        , sourceType = SFloat
+                                        } vao
+  sourceVertexData buff defaultSourcing { offset = 2 * sizeOf (undefined :: (V3 Float)) + sizeOf (undefined :: (V2 Float) )
+                                        , components = 4
+                                        , stride = sizeOf (undefined :: SVertexD)
+                                        , attributeIndex = 3
+                                        , sourceType = SWord8
+                                        , integerMapping = True
+                                        } vao
+  sourceVertexData buff defaultSourcing { offset = 2 * sizeOf (undefined :: (V3 Float)) + sizeOf (undefined :: (V2 Float))  + sizeOf (undefined :: (V4 Word8))
+                                        , components = 4
+                                        , stride = sizeOf (undefined :: SVertexD)
+                                        , attributeIndex = 4
+                                        , sourceType = SFloat
+                                        } vao
+
+
+
+  uploadVector (sindices smesh) (sizeOfV (svertices smesh)) buff
+  return MeshBuffer { mvao = vao
+                    , mbuffer = buff
+                    , indOffset = sizeOfV (svertices smesh)
+                    , indNumber = 3 * VS.length (sindices smesh)
                     }
+
+
+
+
 
 loadTex :: FilePath -> IO (Maybe Texture)
 loadTex file = do
@@ -373,28 +533,59 @@ texture (ImageRGB8 image@(Image w h _)) = do
 
 texture _  = fail "format not available"
 
-initFrameBuffer :: FilePath -> Frame -> IO FrameBuffer
-initFrameBuffer fdir frame = do
+-- initializes frame buffer. fdir is for the texture.
+-- Maybe we should put it somwhere else
+
+initIFrameBuffer :: FilePath -> Frame -> IO FrameBuffer
+initIFrameBuffer fdir frame = do
   mbuf <- mapM initMeshBuffer (fmesh frame)
   let fname = fmap B.unpack (tname frame)
       name' = fmap (fdir ++ ) fname
   tex <- maybe (return Nothing) loadTex name'
-  return FrameBuffer { fframe = frame, fbuffer = mbuf, ftexture = tex }
+  return $ IB IFrameBuffer { ifframe = frame, ifbuffer = mbuf, iftexture = tex }
 
+initSFrameBuffer :: FilePath -> Bones -> Frame -> IO FrameBuffer
+initSFrameBuffer fdir bs frame = do
+  mbuf <- mapM initMeshBuffer (fmesh frame)
+  let fname = fmap B.unpack (tname frame)
+      name' = fmap (fdir ++ ) fname
+      binfo = genBones bs (fmesh frame)
+  tex <- maybe (return Nothing) loadTex name'
+  return $ SB SFrameBuffer { sfframe = frame, sfbuffer = mbuf, sfmeshbonesinfo = binfo, sftexture = tex }
+  where 
+    genBones :: Bones -> Maybe Mesh -> BonesInfo 
+    genBones _ Nothing = []
+    genBones _ (Just (IM _)) = []
+ -- FROMJUST OLOLO FIXMI
+    genBones bones (Just (SM smesh)) = map (first $ \name ->  fromJust (findIndex ((== name) . fst) bones)) $ sbones smesh
+      
 
 defTex' :: Int
 defTex' = 0
 
+drawMesh :: MeshBuffer -> Pipeline -> DrawT IO ()
+drawMesh mesh pl =
+  drawR drawCommand { primitiveType = Triangles
+                    , primitivesVAO = mvao mesh
+                    , numIndices = indNumber mesh
+                    , sourceData = PrimitivesWithIndices (mbuffer mesh) (indOffset mesh) IWord16
+                    }
+---------------------------------------------------------------------------
+------------------------------ DRAWING ------------------------------------
+---------------------------------------------------------------------------
+
 drawFrame :: Tree FrameBuffer -> UniformLocation -> UniformLocation -> MF44 -> Pipeline -> DrawT IO ()
-drawFrame (Node fbuf fbchildren) mloc tloc mvM pl = do
+
+drawFrame (Node (SB fbuf) fbchildren) mloc tloc mvM pl = error "skinned mesh drawing is not implemented yet"
+drawFrame (Node (IB fbuf) fbchildren) mloc tloc mvM pl = do
   setUniform nmvM mloc pl
-  case ftexture fbuf of
+  case iftexture fbuf of
     Just tex' -> do 
       setTextureBindings (IM.singleton defTex' tex')
       setUniform defTex' tloc pl
     Nothing -> return ()
-  unless (isNothing (fbuffer fbuf)) $ drawMesh mb pl
+  unless (isNothing (ifbuffer fbuf)) $ drawMesh mb pl
   mapM_ drawFrameA fbchildren
   where drawFrameA x = drawFrame x mloc tloc nmvM pl
-        nmvM = ftransform (fframe fbuf) !*! mvM
-        (Just mb) = fbuffer fbuf
+        nmvM = ftransform (ifframe fbuf) !*! mvM
+        (Just mb) = ifbuffer fbuf

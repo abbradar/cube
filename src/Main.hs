@@ -42,7 +42,7 @@ data DirectionalLight = DirectionalLight { lcolor :: V3 Float
                   deriving (Show, Read, Eq)
 
 data GameInitialState = GameInitialState { pl :: Pipeline
-                                         , object :: XObject
+                                         , object :: Object
                                          , light :: DirectionalLight
                                          , fpsLimit :: FPSLimit
                                          , xDataTemplates :: XTemplates
@@ -85,8 +85,8 @@ main = do
     fgsource <- T.readFile $ shaderPath <> ".fs"
     pl <- handle (\(ShaderCompilationError msg) -> T.putStrLn msg >> fail "shader compilation error") $ newPipelineVF vxsource fgsource M.empty
     -- .X files
-    objd <- loadFromFile xDataTemplates "data/xobjects/" "lzom.x"
-    object <- initialize objd
+    objd <- loadFromFile xDataTemplates "data/xobjects/" "lzom.x" False
+    object <- initializeI objd
     --light
     let light = DirectionalLight { lcolor = V3 0.7 0.7 0.7
                                  , ldirection = V3 (-0.42) (-0.57) (-0.71)
@@ -181,7 +181,7 @@ drawLoop w (GameSettings {..}) (GameInitialState {..}) = loop
         lightiloc <- getUniformLocation "sunLight.ambient" pl
         setUniform (lambient light) lightiloc pl
         -- meshes
-        draw DContext {cpl = pl, cmvMLoc = mvMloc, ctexLoc = tloc, cmvM = mvM} object
+        drawI DContext {cpl = pl, cmvMLoc = mvMloc, ctexLoc = tloc, cmvM = mvM} object
         
       runPendingFinalizers
       glSwapWindow w
