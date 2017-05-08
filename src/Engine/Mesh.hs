@@ -7,6 +7,7 @@ module Engine.Mesh
        , vertices
        , indices
        , parseFromFile
+       , runParser
        , Bone
        , Bones
        , generateSkeleton
@@ -183,21 +184,22 @@ type FrameBufferTree = Tree FrameBuffer
 parseFromFile :: Parser a -> FilePath -> IO a
 parseFromFile parser path = do
   contents <- B.readFile path
+  either (\e -> fail [qq|{path}: {e}|]) return $ runParser parser contents
 
-  let tryParse _ (Fail left stack err) = do
-        let pos = B.length contents - B.length left
-            part = B.take 10 left
-        fail [qq|Failed to parse {path} at position {pos} ({part}), stack {stack}: {err}|]
-      tryParse allowPartial (Partial f)
-        | allowPartial = tryParse False $ f ""
-        | otherwise = error "parseFromFile: impossible"
-      tryParse _ (Done "" r) = return r
-      tryParse _ (Done left _) = do
-        let pos = B.length contents - B.length left
-            part = B.take 10 left
-        fail [qq|Failed to parse {path} at position {pos} ({part}): can't parse more|]
-
-  tryParse True $ parse parser contents
+runParser :: Parser a -> ByteString -> Either String a
+runParser parser contents = tryParse True $ parse parser contents
+  where tryParse _ (Fail left stack err) =
+          let pos = B.length contents - B.length left
+              part = B.take 10 left
+          in Left [qq|Failed to parse at position {pos} ({part}), stack {stack}: {err}|]
+        tryParse allowPartial (Partial f)
+          | allowPartial = tryParse False $ f ""
+          | otherwise = error "parseFromFile: impossible"
+        tryParse _ (Done "" r) = Right r
+        tryParse _ (Done left _) =
+          let pos = B.length contents - B.length left
+              part = B.take 10 left
+          in Left [qq|Failed to parse at position {pos} ({part}): can't parse more|]
 
 loadFrameIX :: XTemplates -> FilePath -> IO (Tree Frame)
 loadFrameIX tmpls path = loadFrameX' tmpls path loadIMesh

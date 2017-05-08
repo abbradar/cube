@@ -14,9 +14,8 @@ build-type:          Simple
 -- extra-source-files:  
 cabal-version:       >=1.10
 
-executable triangle
-  main-is:             Main.hs
-  other-modules:       Data.Wavefront
+library
+  exposed-modules:     Data.Wavefront
                      , Data.DirectX.Core
                      , Data.DirectX.Templates
                      , Data.DirectX.Data
@@ -26,6 +25,7 @@ executable triangle
                      , Engine.Camera
                      , Engine.Framerate
                      , Engine.Types
+                     , Foreign.Storable.Generic
   default-extensions:  OverloadedStrings
                      , ScopedTypeVariables
                      , TemplateHaskell
@@ -45,7 +45,6 @@ executable triangle
                      , FlexibleInstances
   build-depends:       base >= 4.7
                      , bytestring
-                     , text
                      , sdl2
                      , caramia
                      , c-storable-deriving
@@ -63,5 +62,35 @@ executable triangle
                      , uuid-types
                      , storable-tuple
   hs-source-dirs:      src
+  ghc-options:         -Wall -auto
+  default-language:    Haskell2010
+
+executable triangle
+  main-is:             Triangle.hs
+  hs-source-dirs:      exe
+  default-extensions:  TemplateHaskell
+                     , RecordWildCards
+                     , OverloadedStrings
+  build-depends:       base >= 4.7
+                     , cube
+                     , text
+                     , sdl2
+                     , caramia
+                     , linear >= 1.20.0
+                     , lens
+                     , data-default
+                     , data-default-class >= 0.1.0
+                     , containers
+  ghc-options:         -Wall -threaded -auto
+  default-language:    Haskell2010
+
+benchmark directx-parser
+  type:                exitcode-stdio-1.0
+  main-is:             DirectX.hs
+  hs-source-dirs:      benchmarks
+  build-depends:       base >= 4.7
+                     , cube
+                     , bytestring
+                     , criterion
   ghc-options:         -Wall -threaded -auto
   default-language:    Haskell2010
