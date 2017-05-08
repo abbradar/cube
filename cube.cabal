@@ -84,7 +84,7 @@ executable triangle
   ghc-options:         -Wall -threaded -auto
   default-language:    Haskell2010
 
-benchmark directx-parser
+benchmark directx
   type:                exitcode-stdio-1.0
   main-is:             DirectX.hs
   hs-source-dirs:      benchmarks

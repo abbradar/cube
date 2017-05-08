@@ -6,11 +6,12 @@ import Data.DirectX
 
 main :: IO ()
 main = do
-  templateContents <- B.readFile "data/xtemplates/templates.x"
   let parseTemplates = runParser $ directX False
-  defaultMain [ bench "templates.x" $ whnf parseTemplates templateContents ]
+  templateContents <- B.readFile "data/xtemplates/templates.x"
   templates <- xTemplates <$> either fail return (parseTemplates templateContents)
-
-  dataContents <- B.readFile "data/xobjects/lzom.x"
   let parseData = runParser $ directX' True templates
-  defaultMain [ bench "lzom.x" $ whnf parseData dataContents ]
+  dataContents <- B.readFile "data/xobjects/lzom.x"
+
+  defaultMain [ bench "templates.x" $ whnf parseTemplates templateContents
+              , bench "lzom.x" $ whnf parseData dataContents
+              ]
