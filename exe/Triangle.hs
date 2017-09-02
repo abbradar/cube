@@ -29,6 +29,7 @@ data GameSettings = GameSettings { intervalTime :: Word32
                                  , mouseSensitivity :: Float
                                  , xTemplatesPath :: FilePath
                                  , shaderPath :: FilePath
+                                 , sshaderPath :: FilePath
                                  , objPath :: FilePath
                                  }
                   deriving (Show, Read, Eq)
@@ -81,6 +82,9 @@ main = do
     -- .X files
     objd <- loadFromFile xDataTemplates "data/xobjects/" "lzom.x" False
     object <- initializeI objd
+
+    sobjd <- loadFromFile xDataTemplates "data/xobjects/" "lzom.x" True
+    sobject <- initializeS sobjd
     --light
     let light = DirectionalLight { lcolor = V3 0.7 0.7 0.7
                                  , ldirection = V3 (-0.42) (-0.57) (-0.71)
@@ -175,7 +179,7 @@ drawLoop w (GameSettings {..}) (GameInitialState {..}) = loop
         lightiloc <- getUniformLocation "sunLight.ambient" pl
         setUniform (lambient light) lightiloc pl
         -- meshes
-        drawI DContext {cpl = pl, cmvMLoc = mvMloc, ctexLoc = tloc, cmvM = mvM} object
+        draw DContext {cpl = pl, cmvMLoc = mvMloc, ctexLoc = tloc, cmvM = mvM} object
         
       runPendingFinalizers
       glSwapWindow w

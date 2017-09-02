@@ -25,6 +25,7 @@ module Engine.Mesh
        ) where
 
 import qualified Data.Map as M
+import Data.Foldable
 import qualified Data.IntMap.Strict as IM
 import Data.Maybe
 import Data.Word
@@ -161,17 +162,13 @@ instance Show MeshBuffer where
   show buf = "MeshBuffer"
 
 -- TODO: remove unnecessary Frame information
-data IFrameBuffer = IFrameBuffer { ifframe :: Frame
-                               , ifbuffer :: Maybe MeshBuffer
-                               , iftexture :: Maybe Texture
-                               }
-data SFrameBuffer = SFrameBuffer { sfframe :: Frame
-                                 , sfbuffer :: Maybe MeshBuffer
-                                 , sfmeshbonesinfo :: BonesInfo
-                                 , sftexture :: Maybe Texture
+data FrameBuffer = FrameBuffer {fframe :: Frame
+                                 , fbuffer :: Maybe MeshBuffer
+                                 , fmeshbonesinfo :: Maybe BonesInfo
+                                 , ftexture :: Maybe Texture
                                  }
 --  "I(nanimate)Foo - S(kinned)Foo - Foo = (IF IFoo | SF SFoo) "
-data FrameBuffer = IB IFrameBuffer | SB SFrameBuffer
+-- OBSOLETE data FrameBuffer = IB IFrameBuffer | SB SFrameBuffer
 
 -- trees for frames
 type FrameTree = Tree Frame
@@ -426,12 +423,12 @@ loadMeshOBJ path = do
 
 -- FIXMI (nonfinished)
 generateSkeleton :: FrameTree -> Bones
-generateSkeleton _ = undefined
---generateSkeleton frames = conc $ map getbones frames
---    where 
---      getbones (fmesh Nothing) = []
---      getbones (fmesh IM a) = []
---      getbones (fmesh SM a) = sbones a
+--generateSkeleton _ = undefined
+generateSkeleton frames = concat $ map getbones (toList frames)
+                          where 
+                            getbones (Frame {fmesh =  Nothing}) = []
+                            getbones (Frame {fmesh = Just (IM a)}) = []
+                            getbones (Frame {fmesh = Just (SM a)}) = sbones a
 
 
 
@@ -558,7 +555,7 @@ initIFrameBuffer fdir frame = do
   let fname = fmap B.unpack (tname frame)
       name' = fmap (fdir ++ ) fname
   tex <- maybe (return Nothing) loadTex name'
-  return $ IB IFrameBuffer { ifframe = frame, ifbuffer = mbuf, iftexture = tex }
+  return $ FrameBuffer { fframe = frame, fbuffer = mbuf, fmeshbonesinfo = Nothing, ftexture = tex }
 
 initSFrameBuffer :: FilePath -> Bones -> Frame -> IO FrameBuffer
 initSFrameBuffer fdir bs frame = do
@@ -567,7 +564,7 @@ initSFrameBuffer fdir bs frame = do
       name' = fmap (fdir ++ ) fname
       binfo = genBones bs (fmesh frame)
   tex <- maybe (return Nothing) loadTex name'
-  return $ SB SFrameBuffer { sfframe = frame, sfbuffer = mbuf, sfmeshbonesinfo = binfo, sftexture = tex }
+  return $ FrameBuffer { fframe = frame, fbuffer = mbuf, fmeshbonesinfo = Just binfo, ftexture = tex }
   where 
     genBones :: Bones -> Maybe Mesh -> BonesInfo 
     genBones _ Nothing = []
@@ -592,16 +589,16 @@ drawMesh mesh pl =
 
 drawFrame :: Tree FrameBuffer -> UniformLocation -> UniformLocation -> MF44 -> Pipeline -> DrawT IO ()
 
-drawFrame (Node (SB fbuf) fbchildren) mloc tloc mvM pl = error "skinned mesh drawing is not implemented yet"
-drawFrame (Node (IB fbuf) fbchildren) mloc tloc mvM pl = do
+drawFrame (Node (fbuf@(FrameBuffer {fmeshbonesinfo = Just fbones})) fbchildren) mloc tloc mvM pl = error "skinned mesh drawing is not implemented yet"
+drawFrame (Node (fbuf@(FrameBuffer {fmeshbonesinfo = Nothing})) fbchildren) mloc tloc mvM pl = do
   setUniform nmvM mloc pl
-  case iftexture fbuf of
+  case ftexture fbuf of
     Just tex' -> do 
       setTextureBindings (IM.singleton defTex' tex')
       setUniform defTex' tloc pl
     Nothing -> return ()
-  unless (isNothing (ifbuffer fbuf)) $ drawMesh mb pl
+  unless (isNothing (fbuffer fbuf)) $ drawMesh mb pl
   mapM_ drawFrameA fbchildren
   where drawFrameA x = drawFrame x mloc tloc nmvM pl
-        nmvM = ftransform (ifframe fbuf) !*! mvM
-        (Just mb) = ifbuffer fbuf
+        nmvM = ftransform (fframe fbuf) !*! mvM
+        (Just mb) = fbuffer fbuf
