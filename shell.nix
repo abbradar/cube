@@ -1,0 +1,25 @@
+{ nixpkgs ? import <nixpkgs> {}, compiler ? "default" }:
+
+let
+
+  inherit (nixpkgs) pkgs;
+
+  haskellPackages_ = if compiler == "default"
+                        then pkgs.haskellPackages
+                        else pkgs.haskell.packages.${compiler};
+
+  haskellPackages = haskellPackages_.override {
+    overrides = self: super: {
+      #mkDerivation = args: super.mkDerivation (args // { enableLibraryProfiling = true; });
+    };
+  };
+
+  drv = haskellPackages.callPackage ./default.nix {};
+
+  shell = pkgs.lib.overrideDerivation drv.env (self: {
+    LIBGL_DRIVERS_PATH = "${pkgs.mesa_drivers}/lib/dri";
+  });
+
+in
+
+  if pkgs.lib.inNixShell then shell else drv
