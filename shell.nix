@@ -18,6 +18,7 @@ let
 
   shell = pkgs.lib.overrideDerivation drv.env (self: {
     LIBGL_DRIVERS_PATH = "${pkgs.mesa_drivers}/lib/dri";
+    LD_LIBRARY_PATH = "";
   });
 
 in
