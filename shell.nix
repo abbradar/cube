@@ -17,8 +17,9 @@ let
   drv = haskellPackages.callPackage ./default.nix {};
 
   shell = pkgs.lib.overrideDerivation drv.env (self: {
-    LIBGL_DRIVERS_PATH = "${pkgs.mesa_drivers}/lib/dri";
-    LD_LIBRARY_PATH = "";
+    # For Non-NixOS
+    # LIBGL_DRIVERS_PATH = "${pkgs.mesa_drivers}/lib/dri";
+    # LD_LIBRARY_PATH = "";
   });
 
 in
