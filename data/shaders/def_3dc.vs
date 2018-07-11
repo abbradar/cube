@@ -12,7 +12,7 @@ smooth out vec2 ftexcoord;
 
 void main()
 {
-  onorm = inorm;
+  onorm = (vec4(inorm, 0.0)).xyz;
   ftexcoord = texcoord;
   gl_Position = projectionMat * modelViewMat * vec4(vpos, 1.0);
 }

@@ -41,7 +41,10 @@ data DirectionalLight = DirectionalLight { lcolor :: V3 Float
                   deriving (Show, Read, Eq)
 
 data GameInitialState = GameInitialState { pl :: Pipeline
+--                                         , pls :: Pipeline
                                          , object :: Object
+                                         , sobject :: Object
+                                         , skeleton :: FrameTree
                                          , light :: DirectionalLight
                                          , fpsLimit :: FPSLimit
                                          , xDataTemplates :: XTemplates
@@ -76,15 +79,16 @@ main = do
   glMakeCurrent w c
 
   giveContext $ do
-    vxsource <- T.readFile $ shaderPath <> ".vs"
-    fgsource <- T.readFile $ shaderPath <> ".fs"
+    vxsource <- T.readFile $ sshaderPath <> ".vs"
+    fgsource <- T.readFile $ sshaderPath <> ".fs"
     pl <- handle (\(ShaderCompilationError msg) -> T.putStrLn msg >> fail "shader compilation error") $ newPipelineVF vxsource fgsource M.empty
     -- .X files
     objd <- loadFromFile xDataTemplates "data/xobjects/" "lzom.x" False
     object <- initializeI objd
 
     sobjd <- loadFromFile xDataTemplates "data/xobjects/" "lzom.x" True
-    sobject <- initializeS sobjd
+    skeleton <- loadFrameIX xDataTemplates "data/xobjects/lzomsk.x"
+    sobject <- initializeS sobjd skeleton
     --light
     let light = DirectionalLight { lcolor = V3 0.7 0.7 0.7
                                  , ldirection = V3 (-0.42) (-0.57) (-0.71)
@@ -163,13 +167,17 @@ drawLoop w (GameSettings {..}) (GameInitialState {..}) = loop
                          } screenFramebuffer
       -- start drawing
       runDraws defaultDrawParams { pipeline = pl } $ do
+        let 
         -- depth
         setFragmentPassTests defaultFragmentPassTests { depthTest = Just Less }
         -- set matrices
         pMloc <- getUniformLocation "projectionMat" pl
         setUniform pM pMloc pl
-        mvMloc <- getUniformLocation "modelViewMat" pl
-        setUniform mvM mvMloc pl
+--        mvMloc <- getUniformLocation "modelViewMat" pl
+--        setUniform mvM mvMloc pl
+
+        bLoc <- getUniformLocation "modelViewMat" pl
+        
         tloc <- getUniformLocation "tex" pl
         -- lighting
         lightcloc <- getUniformLocation "sunLight.color" pl
@@ -179,7 +187,7 @@ drawLoop w (GameSettings {..}) (GameInitialState {..}) = loop
         lightiloc <- getUniformLocation "sunLight.ambient" pl
         setUniform (lambient light) lightiloc pl
         -- meshes
-        draw DContext {cpl = pl, cmvMLoc = mvMloc, ctexLoc = tloc, cmvM = mvM} object
-        
+--        draw DContext {cpl = pl, cmvMLoc = mvMloc, ctexLoc = tloc, cmvM = mvM} object
+        drawS DSContext {cspl = pl, cBnesLocation = bLoc, cstexLoc = tloc, cvM = mvM} sobject skeleton
       runPendingFinalizers
       glSwapWindow w
