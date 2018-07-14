@@ -1,8 +1,7 @@
 #version 330 core
 
 uniform mat4 projectionMat;
-uniform mat4 vMMat;
-uniform mat4 jointMat;
+uniform mat4 mVMat;
 #define MAX_BONES 4
 
 uniform mat4 bonesMat[32];
@@ -27,7 +26,7 @@ void main()
   ftexcoord = texcoord;
   pos = vec4(0.0f, 0.0f, 0.0f, 0.0f);
   norm = vec4(0.0f, 0.0f, 0.0f, 0.0f);
-  vpos1 = jointMat * vec4(vpos, 1.0f);
+  vpos1 = vec4(vpos, 1.0f);
 
 
   for(int i = 0; i < MAX_BONES; i++) {
@@ -36,6 +35,6 @@ void main()
     norm += weight[ind] * bonesMat[ind] * offsetMat[ind] * vec4(inorm, 0.0f);
   }
 
-  gl_Position = projectionMat * vMMat * pos;
+  gl_Position = projectionMat * mVMat * pos;
   onorm = (norm).xyz;
 }

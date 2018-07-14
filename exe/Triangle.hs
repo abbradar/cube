@@ -4,6 +4,7 @@ import Data.Monoid
 import qualified Data.Text.IO as T
 import System.Environment
 import qualified Data.Map as M
+import qualified Data.Maybe as May
 import Data.Set (Set)
 import qualified Data.Set as S
 import Data.Default
@@ -40,7 +41,7 @@ data DirectionalLight = DirectionalLight { lcolor :: V3 Float
                                          }
                   deriving (Show, Read, Eq)
 
-data GameInitialState = GameInitialState { pl :: Pipeline
+data GameInitialState = GameInitialState { pls :: Pipelines
 --                                         , pls :: Pipeline
                                          , object :: Object
                                          , sobject :: Object
@@ -79,9 +80,18 @@ main = do
   glMakeCurrent w c
 
   giveContext $ do
-    vxsource <- T.readFile $ sshaderPath <> ".vs"
-    fgsource <- T.readFile $ sshaderPath <> ".fs"
+    -- shaders
+    vxsource <- T.readFile $ shaderPath <> ".vs"
+    fgsource <- T.readFile $ shaderPath <> ".fs"
     pl <- handle (\(ShaderCompilationError msg) -> T.putStrLn msg >> fail "shader compilation error") $ newPipelineVF vxsource fgsource M.empty
+
+    svxsource <- T.readFile $ sshaderPath <> ".vs"
+    sfgsource <- T.readFile $ sshaderPath <> ".fs"
+    spl <- handle (\(ShaderCompilationError msg) -> T.putStrLn msg >> fail "shader compilation error") $ newPipelineVF svxsource sfgsource M.empty
+
+    
+    let pls = M.fromList [("default", pl), ("skinned", spl)]
+    
     -- .X files
     objd <- loadFromFile xDataTemplates "data/xobjects/" "lzom.x" False
     object <- initializeI objd
@@ -166,28 +176,37 @@ drawLoop w (GameSettings {..}) (GameInitialState {..}) = loop
                          , clearColor = Just $ rgba 0.4 0.4 0.4 1.0
                          } screenFramebuffer
       -- start drawing
-      runDraws defaultDrawParams { pipeline = pl } $ do
+      runDraws defaultDrawParams { pipeline = spl } $ do
         let 
         -- depth
         setFragmentPassTests defaultFragmentPassTests { depthTest = Just Less }
-        -- set matrices
-        pMloc <- getUniformLocation "projectionMat" pl
-        setUniform pM pMloc pl
---        mvMloc <- getUniformLocation "modelViewMat" pl
---        setUniform mvM mvMloc pl
 
-        bLoc <- getUniformLocation "modelViewMat" pl
-        
-        tloc <- getUniformLocation "tex" pl
+        -- pipeline initialization
+        pOffset <- Car.getUniformLocation "offsetMat[0]" $ spl
+        pBones <- Car.getUniformLocation "bonesMat[0]" $ spl
+        pModelView <- Car.getUniformLocation "mVMat" $ spl
+        pProjection <- Car.getUniformLocation "projectionMat" spl
+
+        pTexture <- Car.getUniformLocation "tex" spl
+
+        let cspl = CPipeline{cPl = spl, cUniformsLoc = M.fromList [("offset", pOffset), ("bones", pBones), ("modelView", pModelView), ("texture", pTexture)]}
+
+        -- set matrices
+        setUniform pM pProjection spl
+
         -- lighting
-        lightcloc <- getUniformLocation "sunLight.color" pl
-        setUniform (lcolor light) lightcloc pl
-        lightdloc <- getUniformLocation "sunLight.direction" pl
-        setUniform (ldirection light) lightdloc pl
-        lightiloc <- getUniformLocation "sunLight.ambient" pl
-        setUniform (lambient light) lightiloc pl
+        pLightCol <- Car.getUniformLocation "sunLight.color" spl
+        pLightDir <- Car.getUniformLocation "sunLight.direction" spl
+        pLightAmb <- Car.getUniformLocation "sunLight.ambient" spl
+
+        setUniform (lcolor light) pLightCol spl
+        setUniform (ldirection light) pLightDir spl
+        setUniform (lambient light) pLightAmb spl
         -- meshes
 --        draw DContext {cpl = pl, cmvMLoc = mvMloc, ctexLoc = tloc, cmvM = mvM} object
-        drawS DSContext {cspl = pl, cBnesLocation = bLoc, cstexLoc = tloc, cvM = mvM} sobject skeleton
+
+        drawS DContext {cpl = cspl, cmvM = mvM} sobject skeleton
+
       runPendingFinalizers
       glSwapWindow w
+      where spl = May.fromJust $ M.lookup "skinned" pls

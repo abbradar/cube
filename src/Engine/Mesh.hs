@@ -10,6 +10,8 @@ module Engine.Mesh
        , runParser
        , Bone
        , Bones
+       , Animation
+       , AnimationSet
        , generateSkeleton
        , loadMeshOBJ
        , loadFrameIX
@@ -108,6 +110,13 @@ type Bones = [Bone]
 -- TODO: make an array for fast access
 type BonesInfo = [(Int, MF44)]
 
+type Animation = (Float, Float -> FrameTree, [FrameTree])
+
+data AnimationSet = AnimationSet { anumber :: Int
+                                 , animations :: [Animation]
+                                 , currAnum :: Animation
+                                 , currTime :: Float
+                                 }
 
 instance Storable VertexD where
   peek = gPeek
@@ -334,9 +343,9 @@ bonesToVertices nverts bones =
            }
   where lst = map (\x -> (fmap fst x, fmap snd x)) lst1
         lst1 = VU.toList $ VU.create $ do
-    --      res <- VUM.replicate nverts $ V4 (0, 0) (0, 0) (0, 0) (0, 0)
+    -- output format
             res <- VUM.replicate nverts $ V4 (0, 0) (0, 0) (0, 0) (0, 0)
-    --        res <- VUM.replicate nverts $ (V4 0 0 0 0, V4 0 0 0 0)
+    -- number of bones for a given vertex
             indices <- VUM.replicate nverts (0 :: Int)
             forM_ (zip [0..] bones) $ \(boneIdx, bone) -> do
               forM_ (bweights bone) $ \(vertIdx, f) -> do
@@ -549,6 +558,10 @@ texture (ImageRGB8 image@(Image w h _)) = do
 
 texture _  = fail "format not available"
 
+--loadAnimation :: Data -> Animation
+--loadAnimation dt = (lgth, animState, keys)
+--  where keys = genSkel
+
 -- initializes frame buffer. fdir is for the texture.
 -- Maybe we should put it somwhere else
 
@@ -560,20 +573,20 @@ initIFrameBuffer fdir frame = do
   tex <- maybe (return Nothing) loadTex name'
   return $ FrameBuffer { fframe = frame, fbuffer = mbuf, fmeshbonesinfo = Nothing, ftexture = tex }
 
-initSFrameBuffer :: FilePath -> [ByteString] -> Frame -> IO FrameBuffer
-initSFrameBuffer fdir bs frame = do
+initSFrameBuffer :: FilePath -> [ByteString] -> [MF44] -> MF44 -> Frame -> IO FrameBuffer
+initSFrameBuffer fdir bs bsm trans frame = do
   mbuf <- mapM initMeshBuffer (fmesh frame)
   let fname = fmap B.unpack (tname frame)
       name' = fmap (fdir ++ ) fname
-      binfo = genBones bs (fmesh frame)
+      binfo = genBones bs bsm (fmesh frame)
   tex <- maybe (return Nothing) loadTex name'
   return $ FrameBuffer { fframe = frame, fbuffer = mbuf, fmeshbonesinfo = Just binfo, ftexture = tex }
   where 
-    genBones :: [ByteString] -> Maybe Mesh -> BonesInfo 
-    genBones _ Nothing = []
-    genBones _ (Just (IM _)) = []
+    genBones :: [ByteString] -> [MF44] -> Maybe Mesh -> BonesInfo 
+    genBones _ _ Nothing = []
+    genBones _ _ (Just (IM _)) = []
  -- FROMJUST OLOLO FIXMI
-    genBones bones (Just (SM smesh)) = map (first $ \name -> fromJust (findIndex (== name) bones)) $ sbones smesh
+    genBones bones bmats (Just (SM smesh)) = map (\(name, mx) -> (fromJust (findIndex (== name) bones), (ftransform frame) !*! trans !*! inv44 (bmats !! fromJust (findIndex (== name) bones)))) $ sbones smesh
       
 
 defTex' :: Int
@@ -613,25 +626,26 @@ drawFrame (Node (fbuf@(FrameBuffer {fmeshbonesinfo = Nothing})) fbchildren) mloc
         (Just mb) = fbuffer fbuf
 
 
-drawSFrame :: Tree FrameBuffer -> [MF44] -> UniformLocation -> UniformLocation -> UniformLocation-> Pipeline -> DrawT IO ()
+drawSFrame :: Tree FrameBuffer -> [MF44] -> UniformLocation -> UniformLocation-> UniformLocation -> Pipeline -> DrawT IO ()
 
-drawSFrame (Node (fbuf@(FrameBuffer {fmeshbonesinfo = Nothing})) fbchildren) _ tloc _ _ pl = error "use drawFrame for non-skinned mesh"
+drawSFrame (Node (fbuf@(FrameBuffer {fmeshbonesinfo = Nothing})) fbchildren) _ _ _ _ pl = error "use drawFrame for non-skinned mesh"
 
 
-drawSFrame (Node (fbuf@(FrameBuffer {fmeshbonesinfo = Just skel})) fbchildren) bsR tloc tOff tTrans pl = do
+drawSFrame (Node (fbuf@(FrameBuffer {fmeshbonesinfo = Just skel})) fbchildren) bsR tTex tOffset tBones pl = do
 -- Offset matrices    
-  forM_ (zip [0..3] (map snd bsInfo)) (\(a,b) -> setUniform b (tOff+a) pl)
+  forM_ (zip [0..] (map snd bsInfo)) (\(a,b) -> setUniform b (tOffset+a) pl)
 -- Transform matrices
-  forM_ (zip [0..] bsRFrame) (\(a,b) -> setUniform b (tTrans+a) pl)
+  forM_ (zip [0..] bsRFrame) (\(a,b) -> setUniform b (tBones+a) pl)
+
 
   case ftexture fbuf of
     Just tex' -> do 
       setTextureBindings (IM.singleton defTex' tex')
-      setUniform defTex' tloc pl
+      setUniform defTex' tTex pl
     Nothing -> return ()
   unless (isNothing (fbuffer fbuf)) $ drawMesh mb pl
   mapM_ drawFrameB fbchildren
-  where drawFrameB x = drawSFrame x bsR tloc tOff tTrans pl
+  where drawFrameB x = drawSFrame x bsR tTex tOffset tBones pl
         (Just mb) = fbuffer fbuf
         bsInfo = (fromJust $ fmeshbonesinfo fbuf)
         bsRFrame = map (bsR !!) (map fst bsInfo) 
