@@ -1,0 +1,3 @@
+[submodule "3rdparty/caramia"]
+	path = 3rdparty/caramia
+	url = git://github.com/abbradar/caramia
