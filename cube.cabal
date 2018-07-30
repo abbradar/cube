@@ -62,7 +62,7 @@ library
                      , uuid-types
                      , storable-tuple
   hs-source-dirs:      src
-  ghc-options:         -Wall -auto
+  ghc-options:         -Wall -fprof-auto-exported
   default-language:    Haskell2010
 
 executable triangle
@@ -81,7 +81,7 @@ executable triangle
                      , data-default
                      , data-default-class >= 0.1.0
                      , containers
-  ghc-options:         -Wall -threaded -auto
+  ghc-options:         -Wall -threaded -fprof-auto-exported
   default-language:    Haskell2010
 
 benchmark directx
@@ -92,5 +92,5 @@ benchmark directx
                      , cube
                      , bytestring
                      , criterion
-  ghc-options:         -Wall -threaded -auto
+  ghc-options:         -Wall -threaded -fprof-auto-exported
   default-language:    Haskell2010
