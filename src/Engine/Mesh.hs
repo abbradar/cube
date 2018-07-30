@@ -35,6 +35,7 @@ import Data.Word
 import Data.List
 import Control.Monad
 import Control.Arrow
+import Control.Monad.IO.Class
 import Codec.Picture
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as B
@@ -633,7 +634,7 @@ drawSFrame (Node (fbuf@(FrameBuffer {fmeshbonesinfo = Nothing})) fbchildren) _ _
 
 drawSFrame (Node (fbuf@(FrameBuffer {fmeshbonesinfo = Just skel})) fbchildren) bsR tTex tOffset tBones pl = do
 -- Offset matrices    
-  forM_ (zip [0..] (map snd bsInfo)) (\(a,b) -> setUniform b (tOffset+a) pl)
+  forM_ (zip [0..] (map snd skel)) (\(a,b) -> setUniform b (tOffset+a) pl)
 -- Transform matrices
   forM_ (zip [0..] bsRFrame) (\(a,b) -> setUniform b (tBones+a) pl)
 
@@ -647,7 +648,6 @@ drawSFrame (Node (fbuf@(FrameBuffer {fmeshbonesinfo = Just skel})) fbchildren) b
   mapM_ drawFrameB fbchildren
   where drawFrameB x = drawSFrame x bsR tTex tOffset tBones pl
         (Just mb) = fbuffer fbuf
-        bsInfo = (fromJust $ fmeshbonesinfo fbuf)
-        bsRFrame = map (bsR !!) (map fst bsInfo) 
+        bsRFrame = map (bsR !!) (map fst skel) 
 
 

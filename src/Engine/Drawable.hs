@@ -13,20 +13,20 @@ module Engine.Drawable
   ) where
 
 import Control.Monad
-
-import Data.DirectX
+import Control.Monad.IO.Class
 import Data.Tree
 import Data.Maybe
 import Data.ByteString (ByteString, empty)
-import qualified Graphics.Caramia as C
 import qualified Data.Map.Strict as M
+import qualified Graphics.Caramia as C
+import Linear.Matrix
 
+import Data.DirectX
 import Engine.Types
 import Engine.Mesh
 
 import Debug.Trace
 
-import Linear.Matrix
 -- standart pipelines
 
 --data ShaderTransformLoc = ShaderTransformLoc { sWorldLoc :: C.UniformLocation

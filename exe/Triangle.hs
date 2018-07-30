@@ -1,6 +1,8 @@
 import Data.Int
 import Data.Word
 import Data.Monoid
+import Control.Monad
+import qualified Data.Text as T
 import qualified Data.Text.IO as T
 import System.Environment
 import qualified Data.Map as M
@@ -11,6 +13,7 @@ import Data.Default
 import Linear
 import Control.Lens
 import Control.Exception (handle)
+import Control.Monad.IO.Class
 import Graphics.Caramia hiding (normalize, draw)
 import qualified Graphics.Caramia as Car
 import SDL hiding (initialize)
@@ -61,6 +64,19 @@ data GameState = GameState { _camera :: Camera
 
 $(makeLenses ''GameState)
 
+newPipelineDebugVF :: MonadIO m => T.Text -> T.Text -> AttributeBindings -> m Pipeline
+newPipelineDebugVF vert_src frag_src bindings = do
+  vsh <- newShader vert_src Vertex
+  vsh_log <- getShaderLog vsh
+  when (T.length vsh_log /= 0) $ liftIO $ T.putStrLn vsh_log
+  fsh <- newShader frag_src Fragment
+  fsh_log <- getShaderLog fsh
+  when (T.length fsh_log /= 0) $ liftIO $ T.putStrLn fsh_log
+  pl <- newPipeline [vsh, fsh] bindings
+  pl_log <- getPipelineLog pl
+  when (T.length pl_log /= 0) $ liftIO $ T.putStrLn pl_log
+  return pl
+
 main :: IO ()
 main = do
   args <- getArgs
@@ -74,8 +90,8 @@ main = do
   SDL.initialize [InitVideo, InitEvents]
 
   w <- createWindow "A Window" defaultWindow { windowInitialSize = fromIntegral <$> initialSize
-                                             , windowOpenGL = Just defaultOpenGL { glProfile = Core Debug 3 3 }
-                                             }
+                                            , windowOpenGL = Just defaultOpenGL { glProfile = Core Debug 3 3 }
+                                            }
   c <- glCreateContext w
   glMakeCurrent w c
 
@@ -83,11 +99,11 @@ main = do
     -- shaders
     vxsource <- T.readFile $ shaderPath <> ".vs"
     fgsource <- T.readFile $ shaderPath <> ".fs"
-    pl <- handle (\(ShaderCompilationError msg) -> T.putStrLn msg >> fail "shader compilation error") $ newPipelineVF vxsource fgsource M.empty
+    pl <- handle (\(ShaderCompilationError msg) -> T.putStrLn msg >> fail "shader compilation error") $ newPipelineDebugVF vxsource fgsource M.empty
 
     svxsource <- T.readFile $ sshaderPath <> ".vs"
     sfgsource <- T.readFile $ sshaderPath <> ".fs"
-    spl <- handle (\(ShaderCompilationError msg) -> T.putStrLn msg >> fail "shader compilation error") $ newPipelineVF svxsource sfgsource M.empty
+    spl <- handle (\(ShaderCompilationError msg) -> T.putStrLn msg >> fail "shader compilation error") $ newPipelineDebugVF svxsource sfgsource M.empty
 
     
     let pls = M.fromList [("default", pl), ("skinned", spl)]

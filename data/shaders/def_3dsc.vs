@@ -3,9 +3,10 @@
 uniform mat4 projectionMat;
 uniform mat4 mVMat;
 #define MAX_BONES 4
+#define MAX_BONES_PER_MESH 32
 
-uniform mat4 bonesMat[32];
-uniform mat4 offsetMat[4];
+uniform mat4 bonesMat[MAX_BONES_PER_MESH];
+uniform mat4 offsetMat[MAX_BONES_PER_MESH];
 
 layout(location = 0) in vec3 vpos;
 layout(location = 1) in vec3 inorm;

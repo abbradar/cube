@@ -8,9 +8,11 @@ let
                         then pkgs.haskellPackages
                         else pkgs.haskell.packages.${compiler};
 
+  lib = pkgs.haskell.lib;
+
   haskellPackages = haskellPackages_.override {
     overrides = self: super: {
-      #mkDerivation = args: super.mkDerivation (args // { enableLibraryProfiling = true; });
+      caramia = lib.dontCheck (self.callPackage ./3rdparty/caramia { });
     };
   };
 
