@@ -17,6 +17,7 @@ import Control.Monad.IO.Class
 import Data.Tree
 import Data.Maybe
 import Data.ByteString (ByteString, empty)
+import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as M
 import qualified Graphics.Caramia as C
 import Linear.Matrix
@@ -27,7 +28,7 @@ import Engine.Mesh
 
 import Debug.Trace
 
--- standart pipelines
+-- standard pipelines
 
 --data ShaderTransformLoc = ShaderTransformLoc { sWorldLoc :: C.UniformLocation
 --                                             , sModelWiewLoc :: C.UniformLocation
@@ -54,8 +55,8 @@ data DContext = DContext { cpl :: CPipeline
 
 -- should contain any type of meshes, animations, various effects
 data ObjectD = ObjectD { frames :: FrameTree
-                         , filedir :: FilePath
-                         } deriving (Show, Eq, Read)
+                       , filedir :: FilePath
+                       } deriving (Show, Eq, Read)
 
 data Object = Object { buffers :: FrameBufferTree
                      , bones :: Maybe FrameTree

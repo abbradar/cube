@@ -29,7 +29,6 @@ void main()
   norm = vec4(0.0f, 0.0f, 0.0f, 0.0f);
   vpos1 = vec4(vpos, 1.0f);
 
-
   for(int i = 0; i < MAX_BONES; i++) {
     ind = int(index[i]);
     pos += weight[ind] * bonesMat[ind] * offsetMat[ind] * vpos1;
