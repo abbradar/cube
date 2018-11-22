@@ -55,4 +55,4 @@ extra-deps:
 
 nix:
   enable: true
-  packages: [libGL, SDL2]
+  packages: [libGL, SDL2, zlib]
