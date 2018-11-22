@@ -21,10 +21,7 @@ resolver: lts-12.19
 #  - wai
 packages:
 - 3rdparty/caramia
-# The following packages have been ignored due to incompatibility with the
-# resolver compiler, dependency conflicts with other packages
-# or unsatisfied dependencies.
-#- .
+- .
 
 # Dependency packages to be pulled from upstream that are not in the resolver
 # using the same syntax as the packages field.
