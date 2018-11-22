@@ -67,7 +67,7 @@ data Object = Object { buffers :: FrameBufferTree
 --                       }
 
 -- here there is a Bool variable, two paradigmas conflict, should fix it
-loadFromFile :: XTemplates -> FilePath  -> FilePath -> Bool -> IO (ObjectD)
+loadFromFile :: XTemplates -> FilePath -> FilePath -> Bool -> IO (ObjectD)
 loadFromFile tmpls fdir fname isskinned = do
     fs <- ldFrameX tmpls (fdir ++ fname)
     return ObjectD { frames = fs, filedir = fdir }
