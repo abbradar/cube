@@ -21,6 +21,8 @@ library
                      , Data.DirectX.Data
                      , Data.DirectX
                      , Engine.Mesh
+                     , Engine.Loaders
+                     , Engine.Landscape
                      , Engine.Drawable
                      , Engine.Camera
                      , Engine.Framerate

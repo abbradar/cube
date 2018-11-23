@@ -25,6 +25,7 @@ import Linear.Matrix
 import Data.DirectX
 import Engine.Types
 import Engine.Mesh
+import Engine.Loaders
 
 import Debug.Trace
 

@@ -23,6 +23,7 @@ import Engine.Drawable
 import Engine.Camera
 import Engine.Framerate
 import Engine.Mesh
+import Engine.Loaders
 import Data.DirectX
 
 import Debug.Trace
