@@ -1,8 +1,8 @@
 { mkDerivation, attoparsec, base, bytestring, c-storable-deriving
 , caramia, containers, criterion, data-default, data-default-class
-, interpolatedstring-perl6, JuicyPixels, lens, linear, scientific
-, sdl2, stdenv, storable-tuple, text, transformers, uuid-types
-, vector
+, hsnoise, interpolatedstring-perl6, JuicyPixels, lens, linear
+, scientific, sdl2, stdenv, storable-tuple, text, transformers
+, uuid-types, vector
 }:
 mkDerivation {
   pname = "cube";
@@ -12,7 +12,7 @@ mkDerivation {
   isExecutable = true;
   libraryHaskellDepends = [
     attoparsec base bytestring c-storable-deriving caramia containers
-    data-default data-default-class interpolatedstring-perl6
+    data-default data-default-class hsnoise interpolatedstring-perl6
     JuicyPixels lens linear scientific sdl2 storable-tuple transformers
     uuid-types vector
   ];

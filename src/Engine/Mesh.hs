@@ -19,6 +19,7 @@ module Engine.Mesh
        , initSFrameBuffer
        , drawFrame
        , drawSFrame
+       , loadTex
        , FrameTree
        , FrameBufferTree
        ) where
@@ -257,7 +258,7 @@ texture (ImageRGB8 image@(Image w h _)) = do
                                 , imageFormat = RGB8
                                 }
 
-texture _  = fail "format not available"
+texture _  = fail "format not available, we currently use only ImageRGB8"
 
 --loadAnimation :: Data -> Animation
 --loadAnimation dt = (lgth, animState, keys)
@@ -332,18 +333,19 @@ drawSFrame :: Tree FrameBuffer -> [MF44] -> UniformLocation -> UniformLocation->
 drawSFrame (Node (fbuf@(FrameBuffer {fmeshbonesinfo = Nothing})) fbchildren) _ _ _ _ pl = error "use drawFrame for non-skinned mesh"
 
 
-drawSFrame (Node (fbuf@(FrameBuffer {fmeshbonesinfo = Just skel})) fbchildren) bsR tTex tOffset tBones pl = do
+drawSFrame (Node (fbuf@(FrameBuffer {fmeshbonesinfo = Just skel})) fbchildren) bsR pTex tOffset tBones pl = do
 -- Offset matrices    
   forM_ (zip [0..] (map snd skel)) (\(a,b) -> setUniform b (tOffset+a) pl)
 -- Transform matrices
   forM_ (zip [0..] bsRFrame) (\(a,b) -> setUniform b (tBones+a) pl)
+  -- texture
   case ftexture fbuf of
     Just tex' -> do 
       setTextureBindings (IM.singleton defTex' tex')
-      setUniform defTex' tTex pl
+      setUniform defTex' pTex pl
     Nothing -> return ()
   unless (isNothing (fbuffer fbuf)) $ drawMesh mb pl
   mapM_ drawFrameB fbchildren
-  where drawFrameB x = drawSFrame x bsR tTex tOffset tBones pl
+  where drawFrameB x = drawSFrame x bsR pTex tOffset tBones pl
         (Just mb) = fbuffer fbuf
         bsRFrame = map (bsR !!) (map fst skel) 

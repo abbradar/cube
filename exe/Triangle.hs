@@ -17,12 +17,14 @@ import Control.Monad.IO.Class
 import Graphics.Caramia hiding (normalize, draw)
 import qualified Graphics.Caramia as Car
 import SDL hiding (initialize)
-import qualified SDL 
+import qualified SDL
 
 import Engine.Drawable
 import Engine.Camera
 import Engine.Framerate
 import Engine.Mesh
+import Engine.Map
+import Engine.Chunk
 import Engine.Loaders
 import Data.DirectX
 
@@ -49,6 +51,7 @@ data GameInitialState = GameInitialState { pls :: Pipelines
 --                                         , pls :: Pipeline
                                          , object :: Object
                                          , sobject :: Object
+                                         , mapBuffer :: MapBuffer
                                          , skeleton :: FrameTree
                                          , light :: DirectionalLight
                                          , fpsLimit :: FPSLimit
@@ -106,8 +109,13 @@ main = do
     sfgsource <- T.readFile $ sshaderPath <> ".fs"
     spl <- handle (\(ShaderCompilationError msg) -> T.putStrLn msg >> fail "shader compilation error") $ newPipelineDebugVF svxsource sfgsource M.empty
 
+    cvxsource <- T.readFile $ "data/shaders/def_3dc" <> ".vs"
+    cfgsource <- T.readFile $ "data/shaders/def_3dc" <> ".fs"
+  
+    cpl <- handle (\(ShaderCompilationError msg) -> T.putStrLn msg >> fail "shader compilation error") $ newPipelineDebugVF cvxsource cfgsource M.empty
+
     
-    let pls = M.fromList [("default", pl), ("skinned", spl)]
+    let pls = M.fromList [("default", pl), ("skinned", spl), ("colored", cpl)]
     
     -- .X files
     objd <- loadFromFile xDataTemplates "data/xobjects/" "lzom.x" False
@@ -116,10 +124,19 @@ main = do
     sobjd <- loadFromFile xDataTemplates "data/xobjects/" "lzom.x" True
     skeleton <- loadFrameIX xDataTemplates "data/xobjects/lzomsk.x"
     sobject <- initializeS sobjd skeleton
+
+    -- map
+    let
+      posns = Prelude.map (+ (V2 (-1) (-1))) [V2 (-1) (-1), V2 (-1) 0, V2 (-1) 1, V2 (-1) 2, V2 (0) (-1), V2 (0) 0, V2 (0) 1, V2 (0) 2, V2 (1) (-1), V2 (1) 0, V2 (1) 1, V2 (1) 2, V2 (2) (-1), V2 (2) 0, V2 (2) 1, V2 (2) 2]
+      posns' = Prelude.map (+ (V2 (-1) (-1))) [V2 0 0, V2 1 0, V2 0 1, V2 1 1]
+      gmap = initMap (ChunkRandom 1 5 0.05 0.5) posns
+    mBuff <- initMapBuffer "data/Textures/" ["grass1"]
+    mapBuffer <- initChunkBuffers gmap posns' mBuff
+    
     --light
-    let light = DirectionalLight { lcolor = V3 0.7 0.7 0.7
+    let light = DirectionalLight { lcolor = V3 0.3 0.3 0.3
                                  , ldirection = V3 (-0.42) (-0.57) (-0.71)
-                                 , lambient = 0.6
+                                 , lambient = 0.7
                                  }
     fpsLimit <- newFPSLimit
  
@@ -168,20 +185,23 @@ drawLoop w (GameSettings {..}) (GameInitialState {..}) = loop
 
     updateState = updatePos . updateLook
 
-    updatePos st@(GameState {..}) = st & camera %~ moveEyes (movementSpeed * fromIntegral _frameTime *^ delta)
-      where delta = normalize $ fwd + back + left + right
+    updatePos st@(GameState {..}) = let (V4 x y z _) = (viewMatrix _camera) !* (vector (movementSpeed * fromIntegral _frameTime *^ delta)) in st & camera %~ moveEye (V3 x y z) 
+      where delta = normalize $ fwd + back + left + right + up + down
 
             moveKey k v
               | k `S.member` _pressedKeys = v
               | otherwise = V3 0 0 0
 
-            fwd = moveKey KeycodeW (V3 0 1 0)
-            back = moveKey KeycodeS (V3 0 (-1) 0)
+            fwd = moveKey KeycodeW (V3 0 0 (-1))
+            back = moveKey KeycodeS (V3 0 0 1)
             left = moveKey KeycodeA (V3 (-1) 0 0)
             right = moveKey KeycodeD (V3 1 0 0)
+            up = moveKey KeycodeSpace (V3 0 1 0)
+            down = moveKey KeycodeLShift (V3 0 (-1) 0)
+            
 
     updateLook st@(GameState {..}) =
-      st & camera %~ rotateEyes (mouseSensitivity *^ V2 2 (-2) * (fromIntegral <$> _movedMouse) / (fromIntegral <$> _frameSize))
+      st & camera %~ rotateEyes (mouseSensitivity *^ V2 (-1) (-1) * (fromIntegral <$> _movedMouse) / (fromIntegral <$> _frameSize))
 
     doDraw (GameState {..}) = do
       let mvM = viewMatrix _camera
@@ -199,14 +219,14 @@ drawLoop w (GameSettings {..}) (GameInitialState {..}) = loop
         setFragmentPassTests defaultFragmentPassTests { depthTest = Just Less }
 
         -- pipeline initialization
-        pOffset <- Car.getUniformLocation "offsetMat[0]" $ spl
-        pBones <- Car.getUniformLocation "bonesMat[0]" $ spl
-        pModelView <- Car.getUniformLocation "mVMat" $ spl
+        --pOffset <- Car.getUniformLocation "offsetMat[0]" $ spl
+        --pBones <- Car.getUniformLocation "bonesMat[0]" $ spl
+        pModelView <- Car.getUniformLocation "modelViewMat" $ spl
         pProjection <- Car.getUniformLocation "projectionMat" spl
 
         pTexture <- Car.getUniformLocation "tex" spl
 
-        let cspl = CPipeline{cPl = spl, cUniformsLoc = M.fromList [("offset", pOffset), ("bones", pBones), ("modelView", pModelView), ("texture", pTexture)]}
+        --let cspl = CPipeline{cPl = spl, cUniformsLoc = M.fromList [("offset", pOffset), ("bones", pBones), ("modelView", pModelView), ("texture", pTexture)]}
 
         -- set matrices
         setUniform pM pProjection spl
@@ -220,10 +240,15 @@ drawLoop w (GameSettings {..}) (GameInitialState {..}) = loop
         setUniform (ldirection light) pLightDir spl
         setUniform (lambient light) pLightAmb spl
         -- meshes
---        draw DContext {cpl = pl, cmvMLoc = mvMloc, ctexLoc = tloc, cmvM = mvM} object
+        -- map
+        --pProjectionC <- Car.getUniformLocation "projectionMat" cpl
+        setUniform mvM pModelView spl
+        drawChunks (MapContext spl pModelView mvM pTexture) mapBuffer $ map (+(V2 (-1) (-1))) [V2 0 0, V2 1 0, V2 0 1, V2 1 1]
+        --        draw DContext {cpl = pl, cmvMLoc = mvMloc, ctexLoc = tloc, cmvM = mvM} object
 
-        drawS DContext {cpl = cspl, cmvM = mvM} sobject skeleton
+        --drawS DContext {cpl = cspl, cmvM = mvM} sobject skeleton
 
       runPendingFinalizers
       glSwapWindow w
-      where spl = May.fromJust $ M.lookup "skinned" pls
+      where cpl = May.fromJust $ M.lookup "skinned" pls
+            spl = May.fromJust $ M.lookup "colored" pls

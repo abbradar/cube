@@ -20,6 +20,7 @@ type F2 = V2 Float
 type F3 = V3 Float
 type F4 = V4 Float
 type I3 = V3 Word16
+type Int3 = V3 Int
 type I4 = V4 Word16
 type MF44 = M44 Float
 type QF = Quaternion Float
@@ -39,10 +40,18 @@ type VSkinData = (V4 Word8, V4 Float)
   
 -- vertex with coords, normals and texture coords, the default one
 data VertexD = VertexD { position :: !F3
-                       , normal :: !F3
-                       , texcoords :: !F2
-                       }
+                      , normal :: !F3
+                      , texcoords :: !F2
+                      }
              deriving (Generic, Show, Eq, Read)
+
+-- vertex with coords, WITHOUT normals and texture coords, the default one
+data VertexDN = VertexDN { nposition :: !F3
+                        ,  ntexcoords :: !F2
+                        }
+              deriving (Show, Eq, Read)
+
+
 
 -- ordinary vertex
 instance Storable VertexD where
@@ -50,6 +59,13 @@ instance Storable VertexD where
   poke = gPoke
   sizeOf = gSizeOf
   alignment = gAlignment
+
+-- ordinary vertex WITHOUT normals
+--instance Storable VertexDN where
+--  peek = gPeek
+--  poke = gPoke
+--  sizeOf = gSizeOf
+--  alignment = gAlignment
 
 
 -- skinned vertex

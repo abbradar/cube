@@ -22,7 +22,8 @@ library
                      , Data.DirectX
                      , Engine.Mesh
                      , Engine.Loaders
-                     , Engine.Landscape
+                     , Engine.Chunk
+                     , Engine.Map
                      , Engine.Drawable
                      , Engine.Camera
                      , Engine.Framerate
@@ -45,10 +46,12 @@ library
                      , TypeOperators
                      , FlexibleContexts
                      , FlexibleInstances
+                     , ViewPatterns
   build-depends:       base >= 4.7
                      , bytestring
                      , sdl2
                      , caramia
+                     , hsnoise >= 0.0.2
                      , c-storable-deriving
                      , JuicyPixels
                      , linear >= 1.20.0

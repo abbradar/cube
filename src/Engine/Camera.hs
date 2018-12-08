@@ -8,14 +8,14 @@ import Engine.Types
 
 import Debug.Trace
 
-critAngleTan :: Float
-critAngleTan = 5.0
+critAngle :: Float
+critAngle = pi/2.1
 
 upvector :: V3 Float
-upvector = V3 0.0 1.0 0.0
+upvector = V3 0.0 0.0 1.0
 
 data Camera = Camera { _eye :: F3
-                     , _lookat :: F3
+                     , _angles :: F2
                      --, _rotation :: QF
                      , _fov :: Float
                      , _ratio :: Float
@@ -26,8 +26,8 @@ data Camera = Camera { _eye :: F3
 $(makeLenses ''Camera)
 
 instance Default Camera where
-  def = Camera { _eye = (V3 10.0 10.0 (-40.0))
-               , _lookat = (V3 0.0 0.0 0.0)
+  def = Camera { _eye = (V3 (0.0) (0.0) (2.0))
+               , _angles = (V2 0.0 0.0)
                --, _rotation = axisAngle (V3 0 1 0) 0
                , _fov = pi/4.0
                , _ratio = 4.0/3.0
@@ -39,22 +39,22 @@ projectionMatrix :: Camera -> MF44
 projectionMatrix (Camera {..}) = transpose $ perspective _fov _ratio _nplane _fplane
 
 viewMatrix :: Camera -> MF44
-viewMatrix (Camera {..}) = transpose $ lookAt _eye _lookat upvector
+viewMatrix (Camera {..}) = let (V2 phi psi) = _angles in transpose $ lookAt _eye (_eye + (V3 (cos(psi)*cos(phi)) (cos(psi)*sin(phi)) (sin(psi)))) upvector
     
 
-moveEyes :: F3 -> Camera -> Camera
-moveEyes vec cam@(Camera {..}) = cam { _eye = (_eye + vec), _lookat = (_lookat + vec) }
+moveEye :: F3 -> Camera -> Camera
+moveEye vec cam@(Camera {..}) = cam { _eye = (_eye + vec)}
 
 -- Expects relative move of the mouse in range [-1; 1]
 rotateEyes :: F2 -> Camera -> Camera
 rotateEyes rel@(V2 x y) cam@(Camera {..})
   | nearZero rel = cam
-  | otherwise = cam { _eye = _lookat + rotation !* radius }
-  where upvect = upvector
-        radius = _eye - _lookat
-        slope (V3 xv yv zv) = yv**2/(xv**2 + zv**2)
-        ynew 
-          | (slope radius > critAngleTan) && (y * (radius ^. _y) < 0) = 0
-          | otherwise = y
-        rotation = fromQuaternion ((axisAngle upvector (-x)) *
-          (axisAngle (upvect `cross` radius) ynew))
+  | otherwise = cam { _angles = normalizeAngles $ _angles + (V2 x y) }
+  where normalizeAngles (V2 x' y')
+          | y' > critAngle = (V2 (modulo2pi x') critAngle)
+          | y' < -critAngle = (V2 (modulo2pi x') (-critAngle))
+          | otherwise = (V2 (modulo2pi x') y')
+        modulo2pi x'
+          | x' > 2*pi = modulo2pi (x' - 2*pi)
+          | x' < 0 = modulo2pi (x' + 2*pi)
+          | otherwise = x'

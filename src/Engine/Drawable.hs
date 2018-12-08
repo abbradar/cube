@@ -5,11 +5,14 @@ module Engine.Drawable
   , CPipelines
   , Pipelines
   , DContext(..)
+  , MapContext(..)
   , loadFromFile
   , initializeI
   , initializeS
   , draw
   , drawS
+  , drawChunks
+  , drawChunk
   ) where
 
 import Control.Monad
@@ -19,13 +22,19 @@ import Data.Maybe
 import Data.ByteString (ByteString, empty)
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as M
+import qualified Data.IntMap.Strict as IM
 import qualified Graphics.Caramia as C
+import Linear.V2
+import Linear.V3
+import Linear.V4
 import Linear.Matrix
 
 import Data.DirectX
 import Engine.Types
 import Engine.Mesh
 import Engine.Loaders
+import Engine.Map
+import Engine.Chunk
 
 import Debug.Trace
 
@@ -140,3 +149,44 @@ drawS ctxt obj@(Object{bones = Just bnes}) skeleton = do
           genTransfMats = flatten skelrec
 
 drawS ctxt obj@(Object{bones = Nothing}) _ = undefined--do
+
+
+data MapContext = MapContext { mPl :: C.Pipeline
+                             , mTrLoc :: C.UniformLocation
+                             , mView :: MF44
+                             , pTex :: C.UniformLocation
+                             }
+
+drawChunks :: MapContext -> MapBuffer -> [HorizontalPos] -> C.DrawT IO ()
+drawChunks _ _ [] = return ()
+drawChunks ctxt buffs (x:xs) = do
+  drawChunk ctxt buffs x
+  drawChunks ctxt buffs xs
+  
+-- TODO: do somthing with this
+defTex' :: Int
+defTex' = 0
+
+  
+drawChunk :: MapContext -> MapBuffer -> HorizontalPos -> C.DrawT IO ()
+drawChunk (MapContext {..}) (cBuffs, texs) pos@(V2 x y) =
+  case M.lookup pos cBuffs of
+    Nothing -> return ()
+    Just buff -> do
+            -- position uniform
+      C.setUniform (shiftMat !*! mView) mTrLoc mPl
+      mapM_ drawChunkSubset buff'
+      where
+        buff' = map (\ (x'', y'') -> (x'', catMaybes (map (\ z -> M.lookup z texs) y'') )) buff
+        shiftMat = transpose $ (mkTransformationMat identity (V3 x' y' 0.0))
+        x' :: Float
+        x' = fromIntegral (chunkWidth*x)
+        y' = fromIntegral (chunkWidth*y)
+        drawChunkSubset (buff'', csTexs') = do
+          -- texture uniforms
+          -- TODO: normal texturing
+          if(length csTexs' > 0) then C.setTextureBindings (IM.singleton 0 (csTexs' !! 0)) else error "No texture found for the chunk"
+          C.setUniform defTex' pTex mPl
+          drawMesh buff'' mPl
+
+          
