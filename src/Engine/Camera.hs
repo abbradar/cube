@@ -58,3 +58,8 @@ rotateEyes rel@(V2 x y) cam@(Camera {..})
           | x' > 2*pi = modulo2pi (x' - 2*pi)
           | x' < 0 = modulo2pi (x' + 2*pi)
           | otherwise = x'
+
+
+  ------------------------------------- getters ------------------------------
+getHorizontal :: Camera -> HorizontalPos
+getHorizontal (Camera {..}) = let (V3 x y _) = _eye in (V2 (round x) (round y))

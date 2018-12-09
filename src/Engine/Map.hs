@@ -10,6 +10,7 @@ module Engine.Map
   , initChunkMesh'
   , initMap
   , initMapBuffer
+  , initChunks
   ) where
 
 import Data.Vector (Vector)
@@ -95,11 +96,13 @@ gBlockUnsafe' mp (V2 xh yh) (V3 x y z) = getBlock' (getChunkUnsafe mp (V2 (div (
 addChunkBuffer :: HorizontalPos -> MeshBuffer -> MapBuffer -> MapBuffer
 addChunkBuffer pos cBuff (cBuffs, texs') = ( M.insert pos [(cBuff, ["grass1"])] cBuffs, texs') 
 
+-- creates meshes for a new map
 initMap :: ChunkRandom -> [HorizontalPos] -> Map
 initMap rnd posns = createChunkMeshes (Prelude.foldl newChunk newMp posns) posns
   where
     newMp = Map M.empty rnd
 
+-- loads textures for the map
 initMapBuffer :: FilePath -> [FilePath] -> IO MapBuffer
 initMapBuffer path names = do
   textures <- mapM loadTex fullNames
@@ -127,13 +130,21 @@ createChunkMesh' mp@(Map chnks rnd) pos = (Map chunks' rnd)
 initChunkBuffers :: Map -> [HorizontalPos] -> MapBuffer -> IO MapBuffer
 initChunkBuffers mp posns buff = Mon.foldM (\ x y -> initChunkMesh' mp y x) buff posns
 initChunkMesh' :: Map -> HorizontalPos -> MapBuffer -> IO MapBuffer
-initChunkMesh' (Map {..}) pos buff =
-  case(M.lookup pos chunks) of
+initChunkMesh' (Map {..}) pos buff
+  | not (isNothing (M.lookup pos (fst buff))) = return buff
+  | otherwise = case(M.lookup pos chunks) of
     Nothing ->  error $ "No chunk at " Prelude.++ (show pos) --return buffs
     Just ch -> case snd ch of
       Nothing -> error $ "No chunck mesh at " Prelude.++ (show pos) --return buffs
       Just mesh -> do
         chunkBuff <- initMeshBuffer mesh
         return $ addChunkBuffer pos chunkBuff buff
+
+initChunks :: [HorizontalPos] -> (Map, MapBuffer) -> IO (Map, MapBuffer)
+initChunks posns (mp, buff) = fmap (\ x -> (mp', x)) buff'
+  where
+    buff' = initChunkBuffers mp' posns buff
+    mp' = createChunkMeshes (Prelude.foldl newChunk mp posns') posns'
+    posns' = concat $ map (\ x -> [x, x+(V2 0 1), x+(V2 1 0), x+(V2 (-1) 0), x+(V2 0 (-1)), x+(V2 (-1) (-1)), x+(V2 (-1) (1)), x+(V2 (1) (-1)), x+(V2 (1) (1))]) posns 
 
   

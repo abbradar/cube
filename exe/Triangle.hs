@@ -51,7 +51,8 @@ data GameInitialState = GameInitialState { pls :: Pipelines
 --                                         , pls :: Pipeline
                                          , object :: Object
                                          , sobject :: Object
-                                         , mapBuffer :: MapBuffer
+                                        -- , gmap :: Map
+                                        -- , mapBuffer :: MapBuffer
                                          , skeleton :: FrameTree
                                          , light :: DirectionalLight
                                          , fpsLimit :: FPSLimit
@@ -59,6 +60,8 @@ data GameInitialState = GameInitialState { pls :: Pipelines
                                          }
 
 data GameState = GameState { _camera :: Camera
+                           , _gmap :: Map
+                           , _mapBuffer :: MapBuffer
                            , _leftButton :: Bool
                            , _pressedKeys :: Set Keycode
                            , _movedMouse :: V2 Int32
@@ -129,9 +132,8 @@ main = do
     let
       posns = Prelude.map (+ (V2 (-1) (-1))) [V2 (-1) (-1), V2 (-1) 0, V2 (-1) 1, V2 (-1) 2, V2 (0) (-1), V2 (0) 0, V2 (0) 1, V2 (0) 2, V2 (1) (-1), V2 (1) 0, V2 (1) 1, V2 (1) 2, V2 (2) (-1), V2 (2) 0, V2 (2) 1, V2 (2) 2]
       posns' = Prelude.map (+ (V2 (-1) (-1))) [V2 0 0, V2 1 0, V2 0 1, V2 1 1]
-      gmap = initMap (ChunkRandom 1 5 0.05 0.5) posns
     mBuff <- initMapBuffer "data/Textures/" ["grass1"]
-    mapBuffer <- initChunkBuffers gmap posns' mBuff
+    (gmp, mBuff) <- initChunks posns (initMap (ChunkRandom 1 5 0.05 0.5) [], mBuff)  --initChunkBuffers gmap posns' mBuff
     
     --light
     let light = DirectionalLight { lcolor = V3 0.3 0.3 0.3
@@ -142,6 +144,8 @@ main = do
  
     let initialState = GameInitialState {..}
         state0 = GameState { _camera = def
+                           , _gmap = gmp
+                           , _mapBuffer = mBuff
                            , _pressedKeys = S.empty
                            , _leftButton = False
                            , _frameSize = initialSize
@@ -164,9 +168,10 @@ drawLoop w (GameSettings {..}) (GameInitialState {..}) = loop
         Nothing -> return ()
         Just st' -> do
           let st'' = updateState st'
-          doDraw st''
+          st''' <- updateStateMonadic st''
+          doDraw st'''
           ftime <- fpsDelay fpsLimit intervalTime
-          loop (st'' & frameTime .~ ftime)
+          loop (st''' & frameTime .~ ftime)
 
     processEvent Nothing _ = Nothing
     processEvent (Just st) (Event {..}) = case eventPayload of
@@ -184,6 +189,7 @@ drawLoop w (GameSettings {..}) (GameInitialState {..}) = loop
       _ -> Just st
 
     updateState = updatePos . updateLook
+    updateStateMonadic = updateMap
 
     updatePos st@(GameState {..}) = let (V4 x y z _) = (viewMatrix _camera) !* (vector (movementSpeed * fromIntegral _frameTime *^ delta)) in st & camera %~ moveEye (V3 x y z) 
       where delta = normalize $ fwd + back + left + right + up + down
@@ -202,6 +208,13 @@ drawLoop w (GameSettings {..}) (GameInitialState {..}) = loop
 
     updateLook st@(GameState {..}) =
       st & camera %~ rotateEyes (mouseSensitivity *^ V2 (-1) (-1) * (fromIntegral <$> _movedMouse) / (fromIntegral <$> _frameSize))
+
+    -- TODO: clean the incorrect setters
+    updateMap st@(GameState {..}) = do
+      let (V2 x' y') = getHorizontal _camera
+      (gmap', mBuff') <- initChunks [V2 (div x' chunkWidth) (div y' chunkWidth)] (_gmap, _mapBuffer) 
+      return $ (st & gmap %~ (\_ -> gmap')) & mapBuffer %~ (\_ -> mBuff')
+   -- updateStateMonadic st@(GameInitialState)
 
     doDraw (GameState {..}) = do
       let mvM = viewMatrix _camera
@@ -243,7 +256,7 @@ drawLoop w (GameSettings {..}) (GameInitialState {..}) = loop
         -- map
         --pProjectionC <- Car.getUniformLocation "projectionMat" cpl
         setUniform mvM pModelView spl
-        drawChunks (MapContext spl pModelView mvM pTexture) mapBuffer $ map (+(V2 (-1) (-1))) [V2 0 0, V2 1 0, V2 0 1, V2 1 1]
+        drawChunks (MapContext spl pModelView mvM pTexture) _mapBuffer $ map fst (M.toList $ fst _mapBuffer)
         --        draw DContext {cpl = pl, cmvMLoc = mvMloc, ctexLoc = tloc, cmvM = mvM} object
 
         --drawS DContext {cpl = cspl, cmvM = mvM} sobject skeleton
