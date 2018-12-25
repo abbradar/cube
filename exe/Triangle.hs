@@ -18,6 +18,7 @@ import Graphics.Caramia hiding (normalize, draw)
 import qualified Graphics.Caramia as Car
 import SDL hiding (initialize)
 import qualified SDL
+--import SDL.Time (ticks)
 
 import Engine.Drawable
 import Engine.Camera
@@ -26,6 +27,8 @@ import Engine.Mesh
 import Engine.Map
 import Engine.Chunk
 import Engine.Loaders
+import Engine.Types
+  
 import Data.DirectX
 
 import Debug.Trace
@@ -38,6 +41,7 @@ data GameSettings = GameSettings { intervalTime :: Word32
                                  , shaderPath :: FilePath
                                  , sshaderPath :: FilePath
                                  , objPath :: FilePath
+                                 , mapLoadRadius :: Int
                                  }
                   deriving (Show, Read, Eq)
 
@@ -84,6 +88,11 @@ newPipelineDebugVF vert_src frag_src bindings = do
   when (T.length pl_log /= 0) $ liftIO $ T.putStrLn pl_log
   return pl
 
+
+-------------------------------------------------------------------------------------------------------
+------------------------------------------ GAME INIT --------------------------------------------------
+-------------------------------------------------------------------------------------------------------
+  
 main :: IO ()
 main = do
   args <- getArgs
@@ -96,7 +105,8 @@ main = do
 
   SDL.initialize [InitVideo, InitEvents]
 
-  w <- createWindow "A Window" defaultWindow { windowInitialSize = fromIntegral <$> initialSize
+  w <- createWindow "A Window" defaultWindow { -- windowInputGrabbed = True
+                                            windowInitialSize = fromIntegral <$> initialSize
                                             , windowOpenGL = Just defaultOpenGL { glProfile = Core Debug 3 3 }
                                             }
   c <- glCreateContext w
@@ -132,8 +142,8 @@ main = do
     let
       posns = Prelude.map (+ (V2 (-1) (-1))) [V2 (-1) (-1), V2 (-1) 0, V2 (-1) 1, V2 (-1) 2, V2 (0) (-1), V2 (0) 0, V2 (0) 1, V2 (0) 2, V2 (1) (-1), V2 (1) 0, V2 (1) 1, V2 (1) 2, V2 (2) (-1), V2 (2) 0, V2 (2) 1, V2 (2) 2]
       posns' = Prelude.map (+ (V2 (-1) (-1))) [V2 0 0, V2 1 0, V2 0 1, V2 1 1]
-    mBuff <- initMapBuffer "data/Textures/" ["grass1"]
-    (gmp, mBuff) <- initChunks posns (initMap (ChunkRandom 1 5 0.05 0.5) [], mBuff)  --initChunkBuffers gmap posns' mBuff
+    mBuff <- initMapBuffer "data/Textures/" ["sand1", "grass1", "grass3"]
+    (gmp, mBuff) <- initChunks posns (initMap (NoiseRandom 1 1 0.05 0.5, NoiseRandom 1 1 0.05 0.5) [], mBuff)  --initChunkBuffers gmap posns' mBuff
     
     --light
     let light = DirectionalLight { lcolor = V3 0.3 0.3 0.3
@@ -157,6 +167,9 @@ main = do
   glDeleteContext c
   destroyWindow w
 
+-------------------------------------------------------------------------------------------------------
+------------------------------------------ GAME LOOP --------------------------------------------------
+-------------------------------------------------------------------------------------------------------
           
 drawLoop :: Window -> GameSettings -> GameInitialState -> GameState -> IO ()
 drawLoop w (GameSettings {..}) (GameInitialState {..}) = loop
@@ -211,10 +224,10 @@ drawLoop w (GameSettings {..}) (GameInitialState {..}) = loop
 
     -- TODO: clean the incorrect setters
     updateMap st@(GameState {..}) = do
-      let (V2 x' y') = getHorizontal _camera
-      (gmap', mBuff') <- initChunks [V2 (div x' chunkWidth) (div y' chunkWidth)] (_gmap, _mapBuffer) 
-      return $ (st & gmap %~ (\_ -> gmap')) & mapBuffer %~ (\_ -> mBuff')
-   -- updateStateMonadic st@(GameInitialState)
+      let (V2 x' y') = fmap (\x -> div x chunkWidth) (getHorizontal _camera)
+          lst = map (+ (V2 x' y')) $ filter (\ (V2 x y) -> x^2 + y^2 <= mapLoadRadius^2) $ map (\ x -> V2 ((mod x (2*mapLoadRadius+1)) - mapLoadRadius) ((div x (2*mapLoadRadius+1)) - mapLoadRadius)) [1..(2*mapLoadRadius+1)^2]
+      (gmap', mBuff') <- initChunks lst (_gmap, _mapBuffer) 
+      return $ (st & gmap .~ gmap') & mapBuffer .~ mBuff'
 
     doDraw (GameState {..}) = do
       let mvM = viewMatrix _camera

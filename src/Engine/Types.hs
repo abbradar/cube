@@ -84,6 +84,16 @@ instance Storable SVertexD where
   alignment = gAlignment
 
 
+data NoiseRandom = NoiseRandom { cseed :: Int
+                               , coctaves :: Int
+                               , cscale :: Double
+                               , cpersistance :: Double
+                               } deriving (Show, Read, Eq)
+
+type MapRandom = (NoiseRandom, NoiseRandom)
+
+
+
 ---------------------------------------------------------
 ------------------ GAME TYPES ----------------------
 ---------------------------------------------------------

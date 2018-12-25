@@ -33,9 +33,12 @@ import Engine.Chunk
 
 import Debug.Trace
 
+
+  
 -- base map data structure
-data Map = Map { chunks :: M.Map HorizontalPos (Chunk, Maybe Mesh)
-               , mapRnd :: ChunkRandom
+data Map = Map { chunks :: M.Map HorizontalPos (Chunk, [(Mesh, Int)])
+               -- chunk random + biome random
+               , mapRnd :: MapRandom
                }
 
 type MapBuffer = (M.Map HorizontalPos ChunkBuffer, M.Map ByteString Texture)
@@ -68,7 +71,7 @@ newChunk mp@(Map {..}) (flip M.lookup chunks -> Just _) = mp
 newChunk (Map {..}) pos = mp'
   where
     mp' = Map chunks' mapRnd
-    chunks' = M.insert pos (generateChunk mapRnd pos, Nothing) chunks
+    chunks' = M.insert pos (generateChunk mapRnd pos, []) chunks
 
   
 gBlock' :: Map -> WorldPos -> (Map, Block)
@@ -93,11 +96,12 @@ gBlockUnsafe' mp (V2 xh yh) (V3 x y z) = getBlock' (getChunkUnsafe mp (V2 (div (
 ---------------------------------------------------------------
 
 -- TODO: normal textures
-addChunkBuffer :: HorizontalPos -> MeshBuffer -> MapBuffer -> MapBuffer
-addChunkBuffer pos cBuff (cBuffs, texs') = ( M.insert pos [(cBuff, ["grass1"])] cBuffs, texs') 
+addChunkBuffers :: HorizontalPos -> [(MeshBuffer, ByteString)] -> MapBuffer -> MapBuffer
+addChunkBuffers pos cBuff (cBuffs, texs') = ( M.insert pos cBuff' cBuffs, texs')
+  where cBuff' = map (\(x,y) -> (x, [y])) cBuff
 
 -- creates meshes for a new map
-initMap :: ChunkRandom -> [HorizontalPos] -> Map
+initMap :: MapRandom -> [HorizontalPos] -> Map
 initMap rnd posns = createChunkMeshes (Prelude.foldl newChunk newMp posns) posns
   where
     newMp = Map M.empty rnd
@@ -117,14 +121,14 @@ createChunkMesh' :: Map -> HorizontalPos -> Map
 createChunkMesh' mp@(Map chnks rnd) pos = (Map chunks' rnd)
   where
     chunks' = case M.lookup pos chnks of
-      Just (chunk, _) -> M.insert pos (chunk, Just $ sGenerateMeshFromBlocks (gBlockUnsafe' mp (V2 x y))) chunks''
+      Just (chunk, _) -> M.insert pos (chunk, sGenerateMeshFromBlocks (gBlockUnsafe' mp (V2 x y))) chnks
       Nothing -> chnks
     (V2 x y) = pos
-    --depends on the method!
-    (Map chunks'' _) = mp--newSurroundingChunks mp pos
---    newSurroundingChunks :: Map -> HorizontalPos -> Map
---    newSurroundingChunks mp' (V2 x' y') = (newChunk (newChunk (newChunk (newChunk (newChunk mp' $ V2 (x'-1) (y'-1) ) $ V2 x' (y'-1) ) $ V2 x' (y'+1) ) $ V2 (x'-1) y' ) $ V2 (x'+1) y')
 
+
+-- TODO: make something better then this
+textureNamesList :: [ByteString]
+textureNamesList = ["sand", "grass1", "grass3"]
 
 
 initChunkBuffers :: Map -> [HorizontalPos] -> MapBuffer -> IO MapBuffer
@@ -135,10 +139,10 @@ initChunkMesh' (Map {..}) pos buff
   | otherwise = case(M.lookup pos chunks) of
     Nothing ->  error $ "No chunk at " Prelude.++ (show pos) --return buffs
     Just ch -> case snd ch of
-      Nothing -> error $ "No chunck mesh at " Prelude.++ (show pos) --return buffs
-      Just mesh -> do
-        chunkBuff <- initMeshBuffer mesh
-        return $ addChunkBuffer pos chunkBuff buff
+      [] -> error $ "No chunk mesh at " Prelude.++ (show pos) --return buffs
+      meshes -> do
+        chunkBuffs <- mapM initMeshBuffer $ map fst meshes
+        return $ addChunkBuffers pos (zip chunkBuffs (map (\x -> textureNamesList !! (snd x)) meshes)) buff
 
 initChunks :: [HorizontalPos] -> (Map, MapBuffer) -> IO (Map, MapBuffer)
 initChunks posns (mp, buff) = fmap (\ x -> (mp', x)) buff'

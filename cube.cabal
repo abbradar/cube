@@ -22,6 +22,7 @@ library
                      , Data.DirectX
                      , Engine.Mesh
                      , Engine.Loaders
+                     , Engine.Biome
                      , Engine.Chunk
                      , Engine.Map
                      , Engine.Drawable

@@ -1,6 +1,5 @@
 module Engine.Chunk
   ( Chunk(..)
-  , ChunkRandom(..)
   , Block
   , generateChunk
   , getClosestGround
@@ -52,6 +51,7 @@ import Foreign.Storable.Tuple ()
   
 import Engine.Types
 import Engine.Mesh
+import Engine.Biome
 
 import Debug.Trace
 
@@ -64,11 +64,6 @@ type Block = Word8
 type ChunkBlocks = V.Vector Block
 type PosBlock = WorldPos -> Block
 
-data ChunkRandom = ChunkRandom { cseed :: Int
-                               , coctaves :: Int
-                               , cscale :: Double
-                               , cpersistance :: Double
-                               } deriving (Show, Read, Eq)
 
 data Chunk = Chunk { blocks :: ChunkBlocks
                    , pos :: HorizontalPos
@@ -79,15 +74,10 @@ data Chunk = Chunk { blocks :: ChunkBlocks
 -- TODO: make some of them variables
 chunkWidth :: Int
 chunkHeight :: Int
-noiseAmplitude :: Double
-noiseLattice :: Double
-noiseShift :: Double
 
 chunkWidth = 16
 chunkHeight = 32
-noiseAmplitude  = 8.0
-noiseLattice = 4.0
-noiseShift = 2**10
+
   
 ---------------------------------------------------------------  
 ------------------------ GAME LOGIC----------------------------  
@@ -227,11 +217,11 @@ unpackIndex n' = (V3 x y z, n)
 
 
 -- generates mesh from a face, uses knowledge of adjacent visible faces
-generateFromFace' :: V.Vector Int -> (Int, Int) -> ([Ind], [VertexD])
+generateFromFace' :: V.Vector Int -> (Int, Int) -> (([Ind], [VertexD]), Int)
 generateFromFace' arr (n', ind)
---  | x == (-1) || y == (-1) || x == 17 || y == 17 = ([], [])
-  | orient > 0 = ([V3 (4*n) (4*n+1) (4*n+2), V3 (4*n) (4*n+2) (4*n+3)], verts )  
-  | otherwise = ([V3 (4*n) (4*n+2) (4*n+1), V3 (4*n) (4*n+3) (4*n+2)], verts )
+-- jerk : n = 0, undex shift now is in the function one level above
+  | orient > 0 = ( ([V3 (4*n) (4*n+1) (4*n+2), V3 (4*n) (4*n+2) (4*n+3)], verts ), orient)  
+  | otherwise = ( ([V3 (4*n) (4*n+2) (4*n+1), V3 (4*n) (4*n+3) (4*n+2)], verts ), -orient)
   where
     (V3 x y z, m) = unpack' ind
     -- orientation of a face is given in the faces array
@@ -241,14 +231,14 @@ generateFromFace' arr (n', ind)
     adjFaces v = map (\ k -> (fromIntegral $ faceValue k) * (normList !! (snd k))) (filter (\ k -> faceValue k /= 0) adjFacesList)
       where faceValue = \ k -> let (V3 a b c, d) = (fst k + v, snd k) in arr V.! (pack' a b c d)
     scaleCoords vect = floatize vect
-      where floatize (V3 a b c) = (V3 (fromIntegral (a - 0*(quot chunkWidth 2))) (fromIntegral (b - 0*(quot chunkWidth 2)))  (fromIntegral (c - (quot chunkHeight 2))))
+      where floatize (V3 a b c) = (V3 (fromIntegral a) (fromIntegral b)  (fromIntegral (c - (quot chunkHeight 2))))
     -- edges adjacent to a vertex  
     adjEdges :: Int3 -> [F3]
     adjEdges v = concat $ map (\ k -> map (\ p -> (scaleCoords v) + p) (snd k)) (filter (\ k -> let (V3 a b c, d) = (fst (fst k) + v, snd (fst k)) in arr V.! (pack' a b c d) /= 0) $ zip adjFacesList adjEdgesList)
     vert' :: (Int3, F2) -> VertexD
     -- each vertex is computed from the adjacent Edges (position) and Faces (normals)
     vert' (v, tex) = VertexD ((sum $ adjEdges v)/(fromIntegral $ length $ adjEdges v)) (normalize $ sum $ adjFaces v) tex
-    n = fromIntegral n'
+    n = 0 --fromIntegral n'
     verts
       | m == 0 = createVerts (0, 1, 2, 3)
       | m == 1 = createVerts (1, 5, 6, 2)
@@ -258,7 +248,7 @@ generateFromFace' arr (n', ind)
     cubeVerts n1 = (V3 x y z) + ([V3 0 1 0, V3 0 0 0, V3 1 0 0, V3 1 1 0, V3 0 1 (-1), V3 0 0 (-1), V3 1 0 (-1)] !! n1)
     normList :: [F3]
     normList = [V3 0.0 0.0 1.0, V3 0.0 (-1.0) 0.0, V3 (-1.0) 0.0 0.0]
-    -- there are 12 possile faces adjacent to vertex coming from one of 7 possible blocks
+    -- there are 12 possile faces adjacent to a vertex coming from one of 7 possible blocks
     adjFacesList :: [(Int3, Int)]
     adjFacesList = [(V3 0 0 0, 0), (V3 0 0 0, 1), (V3 0 0 0, 2), (V3 0 0 1, 1), (V3 0 0 1, 2), (V3 (-1) 0 0, 0), (V3 (-1) 0 0, 1), (V3 0 (-1) 0, 0), (V3 0 (-1) 0, 2), (V3 (-1) (-1) 0, 0), (V3 (-1) 0 1, 1), (V3 0 (-1) 1, 2)]
     -- list of 12*2 adjacent edges corresponding to the list above
@@ -266,14 +256,26 @@ generateFromFace' arr (n', ind)
     adjEdgesList = [[V3 0.0 1.0 0.0, V3 1.0 0.0 0.0], [V3 1.0 0.0 0.0, V3 0.0 0.0 (-1.0)], [V3 0.0 1.0 0.0, V3 0.0 0.0 (-1.0)], [V3 1.0 0.0 0.0, V3 0.0 0.0 (1.0)], [V3 0.0 1.0 0.0, V3 0.0 0.0 (1.0)], [V3 0.0 1.0 0.0, V3 (-1.0) 0.0 (0.0)], [V3 0.0 1.0 0.0, V3 0.0 0.0 (-1.0)], [V3 1.0 0.0 0.0, V3 0.0 (-1.0) (0.0)], [V3 0.0 (-1.0) 0.0, V3 0.0 0.0 (-1.0)], [V3 (-1.0) 0.0 0.0, V3 0.0 (-1.0) (0.0)], [V3 (-1.0) 0.0 0.0, V3 0.0 0.0 (1.0)], [V3 0.0 (-1.0) 0.0, V3 0.0 0.0 (1.0)]]
 
 
-generateMeshFromFaces' :: VisibleFaces' -> ([Ind], [VertexD])
-generateMeshFromFaces' (faces, inds) = join' $ map (genFace) (zip ([0..] :: [Int]) inds)
+-- divides faces to meshes wrt textures
+generateMeshFromFaces' :: VisibleFaces' -> [(([Ind], [VertexD]), Int)]
+generateMeshFromFaces' (faces, inds) =  map snd $ M.toList $ concat' (M.empty)  (map (genFace) (zip ([0..] :: [Int]) inds)) --join' $ map (genFace) (zip ([0..] :: [Int]) inds)
   where
     genFace = \ x -> generateFromFace' faces x 
-    join' x = (concat $ fst (unzip x), concat $ snd (unzip x))
+    concat' :: M.Map Int (([Ind], [VertexD]), Int) -> [(([Ind], [VertexD]), Int)] -> M.Map Int (([Ind], [VertexD]), Int)
+    concat' x [] = x
+    concat' x (f:fs) = concat' (concat'' x f) fs
+    concat'' :: M.Map Int (([Ind], [VertexD]), Int) -> (([Ind], [VertexD]), Int) -> M.Map Int (([Ind], [VertexD]), Int)
+    concat'' meshes f = case M.lookup (snd f) meshes of
+      Nothing -> M.insert (snd f) f meshes
+      Just msh -> let f' = ((map (\x -> x + (fromIntegral (2 * (length $ fst $ fst msh)))) (fst $ fst f), snd $ fst f), snd f)
+                 in M.insert (snd f) (addFace' msh f') meshes
+        where
+          addFace' (xs,n) (x,_) = ((fst xs ++ (fst x), snd xs ++ (snd x)), n)
+          
+    --join' x = (concat $ fst (unzip x), concat $ snd (unzip x))
         
-generateMeshFromFaces :: VisibleFaces' -> Mesh
-generateMeshFromFaces vf = IM (IMesh (VS.fromList $ snd dt) (VS.fromList $ fst dt))
+generateMeshFromFaces :: VisibleFaces' -> [(Mesh, Int)]
+generateMeshFromFaces vf = map (\x -> (IM (IMesh (VS.fromList $ snd $ fst x) (VS.fromList $ fst $ fst x)), snd x)) dt
   where dt = generateMeshFromFaces' vf
 
 
@@ -294,10 +296,10 @@ unpack' ind = (V3 a' b' (mod (div ind 3) visibleHeight), mod ind 3)
   where a' = (div ind (3*visibleHeight*visibleWidth))-2 
         b' = (mod (div ind (3*visibleHeight)) visibleWidth)-2
 
-edgeFacesBlock' :: PosBlock -> Int3 -> VisibleFaces' -> VisibleFaces'
-edgeFacesBlock' blocks v vfaces = if(blocks v == 1) then Prelude.foldr update' vfaces [0..5] else vfaces
+facesBlock' :: PosBlock -> Int3 -> VisibleFaces' -> VisibleFaces'
+facesBlock' blocks v vfaces = if(blocks v > 0) then Prelude.foldr update' vfaces [0..5] else vfaces
   where
-    update' m vf@(arr, lst) = if(blocks (v + (fNorms m)) == 0) then (arr V.// [(num m, 1 - 2*(quot m 3))], lst ++ (numlst m)) else vf
+    update' m vf@(arr, lst) = if(blocks (v + (fNorms m)) == 0) then (arr V.// [(num m, (fromIntegral $ blocks v)*(1 - 2*(quot m 3)))], lst ++ (numlst m)) else vf
     v' m' = if m' >= 3 then (v + (fNorms m')) else v
     num m' = let (V3 a' b' c') = (v' m') in pack' a' b' c' (mod m' 3)
     numlst m' = let (V3 a' b' _) = (v' m') in if((a'+1)*(b'+1)>0 && (16-a')*(16-b')>0) then [num m'] else []
@@ -312,17 +314,17 @@ generateVisibleFaces :: PosBlock -> VisibleFaces' -> VisibleFaces'
 generateVisibleFaces blocks array = genColomnsRec 0 array
   where
     genColomnsRec n arr
-      | n == cw1*(cw1 )-1 = edgeFacesColomn (v' n) arr
-      | otherwise = edgeFacesColomn (v' n) (genColomnsRec (n+1) arr)
+      | n == cw1*(cw1 )-1 = facesColomn (v' n) arr
+      | otherwise = facesColomn (v' n) (genColomnsRec (n+1) arr)
     cw1 = chunkWidth+2
     v' n = getClosestGround'' blocks (V3 (div n cw1 - 1) (mod n cw1 - 1) (chunkHeight-1))
 
-    edgeFacesColomn v@(V3 x y z) arr'
-      | z > 2 = if(blockBelowVisible blocks v) then edgeFacesBlock' blocks v (edgeFacesColomn (V3 x y (z-1)) arr') else edgeFacesBlock' blocks v arr'
+    facesColomn v@(V3 x y z) arr'
+      | z > 2 = if(blockBelowVisible blocks v) then facesBlock' blocks v (facesColomn (V3 x y (z-1)) arr') else facesBlock' blocks v arr'
       | otherwise = arr'
     
 -- naive surfaces nets mesh generation method
-sGenerateMeshFromBlocks :: PosBlock -> Mesh
+sGenerateMeshFromBlocks :: PosBlock -> [(Mesh, Int)]
 sGenerateMeshFromBlocks blocks = generateMeshFromFaces edgeFaces
   where 
    edgeFaces = generateVisibleFaces blocks $ (V.generate (3*(visibleWidth)*(visibleWidth)*visibleHeight) (\ _ -> 0), [])
@@ -331,11 +333,23 @@ sGenerateMeshFromBlocks blocks = generateMeshFromFaces edgeFaces
 generate3 :: Int -> Int -> Int -> (Int -> Int -> Int -> a) -> V.Vector a
 generate3 sx sy sz fxyz = V.generate (sx*sy*sz) (\ x -> fxyz (div (div x sz) sy) (mod (div x sz) sy) (mod x sz))
 
+
+noiseAmplitude :: Double
+noiseLattice :: Double
+noiseShift :: Double
+
+noiseAmplitude  = 8.0
+noiseLattice = 4.0
+noiseShift = 2**10
+  
+
+  
 -- creates a chunck using Perlin noise
-generateChunk :: ChunkRandom -> HorizontalPos -> Chunk
-generateChunk (ChunkRandom cs co csc cp) chunkPos@(V2 x y) = (Chunk blocks' chunkPos) where
+generateChunk :: MapRandom -> HorizontalPos -> Chunk
+generateChunk (NoiseRandom cs co csc cp, biomeRandom) chunkPos@(V2 x y) = (Chunk blocks' chunkPos) where
   blocks' = blocksFromHeightFunction(hFunction)
-  blocksFromHeightFunction hFunction' = generate3 chunkWidth chunkWidth chunkHeight (\ xc yc zc -> if( zc > (hFunction' xc yc)) then 0 else 1)
+  blocksFromHeightFunction hFunction' = generate3 chunkWidth chunkWidth chunkHeight (\ xc yc zc -> if( zc > (hFunction' xc yc)) then 0 else fromIntegral $ biomeFunction xc yc)
+  biomeFunction xc yc = getBiome biomeRandom $ V2 (x*chunkWidth + xc) (y*chunkWidth + yc)
   hFunction = (\ xc yc -> quot chunkHeight 2 + (round $ noiseAmplitude*(noiseValue perlinNoise ((fromIntegral $ x*chunkWidth + xc)/noiseLattice + noiseShift, (fromIntegral $ y*chunkWidth + yc)/noiseLattice + noiseShift, 0.0))))
   -- test height function
   hFunctionTest = (\ xc yc -> if (xc == (8 :: Int) && yc == (8 :: Int)) then 17 :: Int else 16)
