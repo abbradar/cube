@@ -296,38 +296,41 @@ unpack' ind = (V3 a' b' (mod (div ind 3) visibleHeight), mod ind 3)
   where a' = (div ind (3*visibleHeight*visibleWidth))-2 
         b' = (mod (div ind (3*visibleHeight)) visibleWidth)-2
 
-facesBlock' :: PosBlock -> Int3 -> VisibleFaces' -> VisibleFaces'
-facesBlock' blocks v vfaces = if(blocks v > 0) then Prelude.foldr update' vfaces [0..5] else vfaces
+
+facesBlock' :: PosBlock -> Int3 -> [((Int, Int), Int)]
+facesBlock' blocks v = {-# SCC "justGAY1" #-} if(blocks v > 0) then concatMap update' [0..5] else []
   where
-    update' m vf@(arr, lst) = if(blocks (v + (fNorms m)) == 0) then (arr V.// [(num m, (fromIntegral $ blocks v)*(1 - 2*(quot m 3)))], lst ++ (numlst m)) else vf
+    update' m = if(blocks (v + (fNorms m)) == 0) then {-# SCC "incredibleGAY1" #-} [((num m, (fromIntegral $ blocks v)*(1 - 2*(quot m 3))), {-# SCC "wonderfulGAY1" #-} numFilter m)] else []
     v' m' = if m' >= 3 then (v + (fNorms m')) else v
     num m' = let (V3 a' b' c') = (v' m') in pack' a' b' c' (mod m' 3)
-    numlst m' = let (V3 a' b' _) = (v' m') in if((a'+1)*(b'+1)>0 && (16-a')*(16-b')>0) then [num m'] else []
+    numFilter m' = let (V3 a' b' _) = (v' m') in if((a'+1)*(b'+1)>0 && (16-a')*(16-b')>0) then num m' else -1
             
         
-    fNorms n = ([V3 0 0 1, V3 0 (-1) 0, V3 (-1) 0 0, V3 0 0 (-1), V3 0 1 0, V3 1 0 0]) !! n
+    fNorms n = (V.fromList ([V3 0 0 1, V3 0 (-1) 0, V3 (-1) 0 0, V3 0 0 (-1), V3 0 1 0, V3 1 0 0])) V.! n
+
   
 blockBelowVisible :: PosBlock -> Int3 -> Bool
 blockBelowVisible blocks (V3 x y z) = blocks (V3 x y (z-1)) > 0 && (blocks (V3 (x+1) y (z-1)) > 0 || blocks (V3 (x-1) y (z-1)) > 0 || blocks (V3 x (y+1) (z-1)) > 0 || blocks (V3 x (y-1) (z-1)) > 0)
   
+
 generateVisibleFaces :: PosBlock -> VisibleFaces' -> VisibleFaces'
-generateVisibleFaces blocks array = genColomnsRec 0 array
+generateVisibleFaces blocks array@(arr, lst) = (arr V.// (map fst genColomns), filter (>(-1)) $ map snd genColomns)
   where
-    genColomnsRec n arr
-      | n == cw1*(cw1 )-1 = facesColomn (v' n) arr
-      | otherwise = facesColomn (v' n) (genColomnsRec (n+1) arr)
+    genColomns = concatMap (\ n -> facesColomn' (v' n)) [0..(cw1*(cw1)-1)]
     cw1 = chunkWidth+2
     v' n = getClosestGround'' blocks (V3 (div n cw1 - 1) (mod n cw1 - 1) (chunkHeight-1))
 
-    facesColomn v@(V3 x y z) arr'
-      | z > 2 = if(blockBelowVisible blocks v) then facesBlock' blocks v (facesColomn (V3 x y (z-1)) arr') else facesBlock' blocks v arr'
-      | otherwise = arr'
-    
+    facesColomn' v@(V3 x y z)
+      | z > 2 = if(blockBelowVisible blocks v) then  facesBlock' blocks v else facesColomn' (V3 x y (z-1))
+      | otherwise = []
+
+
+  
 -- naive surfaces nets mesh generation method
 sGenerateMeshFromBlocks :: PosBlock -> [(Mesh, Int)]
-sGenerateMeshFromBlocks blocks = generateMeshFromFaces edgeFaces
+sGenerateMeshFromBlocks blocks = {-# SCC "MeshFromFacesGAY" #-} generateMeshFromFaces edgeFaces
   where 
-   edgeFaces = generateVisibleFaces blocks $ (V.generate (3*(visibleWidth)*(visibleWidth)*visibleHeight) (\ _ -> 0), [])
+   edgeFaces = {-# SCC "VisibleFacesGAY" #-} generateVisibleFaces blocks $ (V.generate (3*(visibleWidth)*(visibleWidth)*visibleHeight) (\ _ -> 0), [])
     
           
 generate3 :: Int -> Int -> Int -> (Int -> Int -> Int -> a) -> V.Vector a

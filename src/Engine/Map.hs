@@ -74,6 +74,7 @@ newChunk (Map {..}) pos = mp'
     chunks' = M.insert pos (generateChunk mapRnd pos, []) chunks
 
   
+-- adds a new chunk if the block is out of bounds of the current chunks  
 gBlock' :: Map -> WorldPos -> (Map, Block)
 gBlock' mp (V3 x y z) = gBl $ getChunk' mp (V2 (div x chunkWidth) (div y chunkWidth))
   where
@@ -89,7 +90,7 @@ gBlockUnsafe mp (V3 x y z) = getBlock' (getChunkUnsafe mp (V2 (div x chunkWidth)
 
 
 gBlockUnsafe' :: Map -> HorizontalPos -> WorldPos -> Block
-gBlockUnsafe' mp (V2 xh yh) (V3 x y z) = getBlock' (getChunkUnsafe mp (V2 (div (x) chunkWidth + xh) (div (y) chunkWidth + yh))) (V3 (mod x chunkWidth) (mod y chunkWidth) z)
+gBlockUnsafe' mp (V2 xh yh) (V3 x y z) = {-# SCC "justSoGAY" #-}  getBlock' (getChunkUnsafe mp (V2 (div (x) chunkWidth + xh) (div (y) chunkWidth + yh))) (V3 (mod x chunkWidth) (mod y chunkWidth) z)
 
 ---------------------------------------------------------------  
 ------------------------ SYSTEM -------------------------------  
