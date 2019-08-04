@@ -173,11 +173,12 @@ drawChunk (MapContext {..}) (cBuffs, texs) pos@(V2 x y) =
   case M.lookup pos cBuffs of
     Nothing -> return ()
     Just buff -> do
-            -- position uniform
+-- position uniform
       C.setUniform (shiftMat !*! mView) mTrLoc mPl
       mapM_ drawChunkSubset buff'
       where
-        buff' = map (\ (x'', y'') -> (x'', catMaybes (map (\ z -> M.lookup z texs) y'') )) buff
+        -- todo correct this mess
+        buff' = map (\ (x'', y'') -> (fromMaybe (error "Empty map buffers") x'', catMaybes (map (\ z -> M.lookup z texs) y'')))  buff
         shiftMat = transpose $ (mkTransformationMat identity (V3 x' y' 0.0))
         x' :: Float
         x' = fromIntegral (chunkWidth*x)

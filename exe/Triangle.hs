@@ -55,6 +55,7 @@ data GameInitialState = GameInitialState { pls :: Pipelines
 --                                         , pls :: Pipeline
                                          , object :: Object
                                          , sobject :: Object
+                                         , anim1 :: [Animation]
                                         -- , gmap :: Map
                                         -- , mapBuffer :: MapBuffer
                                          , skeleton :: FrameTree
@@ -138,6 +139,8 @@ main = do
     skeleton <- loadFrameIX xDataTemplates "data/xobjects/lzomsk.x"
     sobject <- initializeS sobjd skeleton
 
+    anim1 <- loadAnimation xDataTemplates "data/xobjects/lzomatk.X" skeleton
+    print anim1
     -- map
     let
       posns = Prelude.map (+ (V2 (-1) (-1))) [V2 (-1) (-1), V2 (-1) 0, V2 (-1) 1, V2 (-1) 2, V2 (0) (-1), V2 (0) 0, V2 (0) 1, V2 (0) 2, V2 (1) (-1), V2 (1) 0, V2 (1) 1, V2 (1) 2, V2 (2) (-1), V2 (2) 0, V2 (2) 1, V2 (2) 2]

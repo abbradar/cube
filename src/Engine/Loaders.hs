@@ -4,6 +4,7 @@ module Engine.Loaders
        , loadMeshOBJ
        , loadFrameIX
        , loadFrameSX
+       , loadAnimation
        ) where
 
 
@@ -84,7 +85,7 @@ loadFrameX' :: XTemplates -> FilePath -> (Data -> Maybe Mesh) -> IO (Tree Frame)
 loadFrameX' tmpls path ldMesh = do
   vals <- parseFromFile (directX' True tmpls) path
   let frame = do
-        -- XXX: ignores all frames except the first one
+        -- XXX: ignores all frames except the first one ORLY??
         fs <- mapM (loadFrameTree' ldMesh) $ filter (\x -> dataTemplate x == "Frame") $ xData vals
         let root = Frame { fmesh = Nothing
                          , fname = Nothing
@@ -98,22 +99,15 @@ loadFrameX' tmpls path ldMesh = do
 
 -- loads animations
 
-loadAnimation :: XTemplates -> FilePath -> FrameTree -> IO (Animation)
-loadAnimation tmpls path skeleton = undefined--do
---  vals <- parseFromFile (directX' True tmpls) path
---  let anim = do
---        -- XXX: ignores all frames except the first one
---        as <- mapM (loadFrameTree' ldMesh) $ filter (\x -> dataTemplate x == "Animation") $ xData vals
---        let root = Frame { fmesh = Nothing
---                         , fname = Nothing
---                         , tname = Nothing
---                         , ftransform = identity
---                         }
---        return $ Node root fs
---  case frame of
---    Nothing -> fail "cannot find frames"
---    Just f -> return f
+loadAnimation :: XTemplates -> FilePath -> FrameTree -> IO ([Animation])
+loadAnimation tmpls path skeleton = do
+  vals <- parseFromFile (directX' True tmpls) path
+  return $ map loadAnimation' $ checkEmpty $ filter (\x -> dataTemplate x == "Animation") $ xData vals
+  where
+    checkEmpty x = if(x == []) then fail "cannot find animations" else Debug.Trace.trace "lol" x
 
+loadAnimation' :: Data -> Animation
+loadAnimation' dt = traceShow dt fail "Dick Cockz"
 
 -- searches in the list of data an element with coinciding template
 searchFieldT :: ByteString -> [Data] -> Maybe Data

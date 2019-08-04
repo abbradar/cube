@@ -43,7 +43,8 @@ data Map = Map { chunks :: M.Map HorizontalPos (Chunk, [(Mesh, Int)])
 
 type MapBuffer = (M.Map HorizontalPos ChunkBuffer, M.Map ByteString Texture)
 
-type ChunkBuffer = [(MeshBuffer, [ByteString])]
+-- Maybe MeshBuffer
+type ChunkBuffer = [(Maybe MeshBuffer, [ByteString])]
 
 
 
@@ -99,7 +100,7 @@ gBlockUnsafe' mp (V2 xh yh) (V3 x y z) = {-# SCC "justSoGAY" #-}  getBlock' (get
 -- TODO: normal textures
 addChunkBuffers :: HorizontalPos -> [(MeshBuffer, ByteString)] -> MapBuffer -> MapBuffer
 addChunkBuffers pos cBuff (cBuffs, texs') = ( M.insert pos cBuff' cBuffs, texs')
-  where cBuff' = map (\(x,y) -> (x, [y])) cBuff
+  where cBuff' = map (\(x,y) -> (Just x, [y])) cBuff
 
 -- creates meshes for a new map
 initMap :: MapRandom -> [HorizontalPos] -> Map

@@ -330,7 +330,7 @@ generateVisibleFaces blocks array@(arr, lst) = (arr V.// (map fst genColomns), f
 sGenerateMeshFromBlocks :: PosBlock -> [(Mesh, Int)]
 sGenerateMeshFromBlocks blocks = {-# SCC "MeshFromFacesGAY" #-} generateMeshFromFaces edgeFaces
   where 
-   edgeFaces = {-# SCC "VisibleFacesGAY" #-} generateVisibleFaces blocks $ (V.generate (3*(visibleWidth)*(visibleWidth)*visibleHeight) (\ _ -> 0), [])
+   edgeFaces = Debug.Trace.trace "GAY" $ {-# SCC "VisibleFacesGAY" #-} generateVisibleFaces blocks $ (V.generate (3*(visibleWidth)*(visibleWidth)*visibleHeight) (\ _ -> 0), [])
     
           
 generate3 :: Int -> Int -> Int -> (Int -> Int -> Int -> a) -> V.Vector a

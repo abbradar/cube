@@ -70,7 +70,7 @@ type Bones = [Bone]
 -- TODO: make an array for fast access
 type BonesInfo = [(Int, MF44)]
 
-type Animation = (Float, Float -> FrameTree, [FrameTree])
+type Animation = (ByteString, VS.Vector MF44)
 
 data AnimationSet = AnimationSet { anumber :: Int
                                  , animations :: [Animation]
