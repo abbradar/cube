@@ -107,7 +107,7 @@ loadAnimation tmpls path skeleton = do
     checkEmpty x = if(x == []) then fail "cannot find animations" else Debug.Trace.trace "lol" x
 
 loadAnimation' :: Data -> Animation
-loadAnimation' dt = traceShow dt fail "Dick Cockz"
+loadAnimation' dt = error "Dick Cockz"
 
 -- searches in the list of data an element with coinciding template
 searchFieldT :: ByteString -> [Data] -> Maybe Data
@@ -150,7 +150,7 @@ loadMaterial dt = do
     VString (DV nm) <- M.lookup "filename" $ dataValues ( tname )
     return nm
 
-maybeM :: Monad m => String -> Maybe a -> m a
+maybeM :: MonadFail m => String -> Maybe a -> m a
 maybeM err Nothing = fail err
 maybeM _ (Just a) = return a
 

@@ -107,9 +107,9 @@ main = do
   SDL.initialize [InitVideo, InitEvents]
 
   w <- createWindow "A Window" defaultWindow { -- windowInputGrabbed = True
-                                            windowInitialSize = fromIntegral <$> initialSize
-                                            , windowOpenGL = Just defaultOpenGL { glProfile = Core Debug 3 3 }
-                                            }
+                                               windowInitialSize = fromIntegral <$> initialSize
+                                             , windowGraphicsContext = OpenGLContext defaultOpenGL { glProfile = Core Debug 3 3 }
+                                             }
   c <- glCreateContext w
   glMakeCurrent w c
 
