@@ -66,7 +66,8 @@ data DContext = DContext { cpl :: CPipeline
 -- should contain any type of meshes, animations, various effects
 data ObjectD = ObjectD { frames :: FrameTree
                        , filedir :: FilePath
-                       } deriving (Show, Eq, Read)
+                       }
+             deriving (Show, Eq, Read)
 
 data Object = Object { buffers :: FrameBufferTree
                      , bones :: Maybe FrameTree
@@ -128,7 +129,7 @@ draw _ _ = undefined
 drawS :: DContext -> Object -> FrameTree -> C.DrawT IO ()
 drawS ctxt obj@(Object{bones = Just bnes}) skeleton = do
 -- CAN RETURN -1 FIXME
---  fromJust, FIXME 
+--  fromJust, FIXME
     C.setUniform (cmvM ctxt) pModelView pl
 
     drawSFrame (buffers obj) bonesR pTexture pOffset pBones pl

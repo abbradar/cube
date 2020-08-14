@@ -18,7 +18,8 @@ let
 
   drv = haskellPackages.callPackage ./default.nix {};
 
-  shell = pkgs.lib.overrideDerivation drv.env (self: {
+  shell = drv.env.overrideAttrs (self: {
+    nativeBuildInputs = self.nativeBuildInputs ++ [ haskellPackages.cabal-install ];
     # For Non-NixOS
     # LIBGL_DRIVERS_PATH = "${pkgs.mesa_drivers}/lib/dri";
     # LD_LIBRARY_PATH = "";
