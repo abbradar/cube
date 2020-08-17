@@ -96,20 +96,20 @@ initializeS :: ObjectD -> FrameTree -> IO (Object)
 initializeS objd skel = do
     let initSFBRec (Node rt chldren) mat = Node{rootLabel = initSFBuffer rt mat, subForest = (map (\x -> initSFBRec x ((ftransform rt) !*! mat)) chldren)}
     obj <- sequence $ initSFBRec (frames objd) identity
- --   print $ flatten skel
+    --   print $ flatten skel
     return Object { buffers = obj, bones = Just skel }
     where
       --bns = generateSkeleton (frames objd)
       initSFBuffer x mat = initSFrameBuffer (filedir objd) (map (\x -> getName $ fname x) $ flatten skel) bonesR mat x
       getName (Just nm) = nm
       getName Nothing = empty
--- Computing offsetMatrices
+      -- Computing offsetMatrices
       bonesR = genTransfMats
       skelmats = fmap (ftransform) skel
       skelrec = (treeRecUpdate skelmats identity)
- --         treeRecUpdate :: (Tree MF44) -> MF44 -> (Tree MF44)
+      -- treeRecUpdate :: (Tree MF44) -> MF44 -> (Tree MF44)
       treeRecUpdate (Node root children) mat = Node{rootLabel = (root !*! mat), subForest = (map (\x -> treeRecUpdate x (root !*! mat)) children)}
-          -- FIXME needs to recursively compute the transform
+      -- FIXME needs to recursively compute the transform
       genTransfMats = flatten skelrec
       
 
