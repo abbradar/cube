@@ -112,10 +112,13 @@ main = do
 
   SDL.initialize [InitVideo, InitEvents]
 
-  w <- createWindow "A Window" defaultWindow { -- windowInputGrabbed = True
-                                               windowInitialSize = fromIntegral <$> initialSize
+  w <- createWindow "A Window" defaultWindow { windowInputGrabbed = True
+                                             ,  windowInitialSize = fromIntegral <$> initialSize
                                              , windowGraphicsContext = OpenGLContext defaultOpenGL { glProfile = Core Debug 3 3 }
                                              }
+
+  setMouseLocationMode RelativeLocation
+       
   c <- glCreateContext w
   glMakeCurrent w c
 
@@ -209,19 +212,21 @@ drawLoop w (GameSettings {..}) (GameInitialState {..}) = loop
       -- FIXME: update camera
       -- XXX: maybe WindowSizeChangedEvent is more proper here?
       WindowResizedEvent (WindowResizedEventData {..}) -> Just (st & frameSize .~ windowResizedEventSize)
-      MouseMotionEvent (MouseMotionEventData {..}) | _leftButton st -> Just (st & movedMouse %~ (+ mouseMotionEventRelMotion))
+      MouseMotionEvent (MouseMotionEventData {..}) -> Just (st & movedMouse %~ (+ mouseMotionEventRelMotion))
       KeyboardEvent (KeyboardEventData {..}) -> case keyboardEventKeyMotion of
-        Pressed -> Just (st & pressedKeys %~ S.insert (keysymKeycode keyboardEventKeysym))
+        Pressed -> if KeycodeEscape == (keysymKeycode keyboardEventKeysym) then Nothing else Just (st & pressedKeys %~ S.insert (keysymKeycode keyboardEventKeysym))
         Released -> Just (st & pressedKeys %~ S.delete (keysymKeycode keyboardEventKeysym))
       MouseButtonEvent (MouseButtonEventData {..}) -> case mouseButtonEventMotion of
         Pressed -> Just (st & leftButton .~ True)
         Released -> Just (st & leftButton .~ False)
       _ -> Just st
 
-    updateState = updatePos . updateLook
+    updateState = updatePos . updateLook 
+
     updateStateMonadic = updateMap
 
-    updatePos st@(GameState {..}) = ((st & playerState %~ (\_ -> state)) & playerPos %~ (\_ -> (V3 (x+dx1) (y+dy1) (fromIntegral z1 - 16)))) & camera %~ setEye (V3 (x+dx1) (y+dy1) (fromIntegral z1 - 16+1))
+
+    updatePos st@(GameState {..}) = st & playerState .~ state & playerPos .~ (V3 (x+dx1) (y+dy1) (fromIntegral z1 - 16)) & camera %~ setEye (V3 (x+dx1) (y+dy1) (fromIntegral z1 - 16+1))
       --let (V4 x y z _) = (viewMatrix _camera) !* (vector (movementSpeed * fromIntegral _frameTime *^ delta)) in st & camera %~ moveEye (V3 x y z) 
       where (V3 x y z) = _eye _camera 
             (V3 dx dy _) = (movementSpeed * fromIntegral _frameTime *^ delta)
@@ -257,7 +262,7 @@ drawLoop w (GameSettings {..}) (GameInitialState {..}) = loop
       let (V2 x' y') = fmap (\x -> div x chunkWidth) (getHorizontal _camera)
           lst = map (+ (V2 x' y')) $ filter (\ (V2 x y) -> x^2 + y^2 <= mapLoadRadius^2) $ map (\ x -> V2 ((mod x (2*mapLoadRadius+1)) - mapLoadRadius) ((div x (2*mapLoadRadius+1)) - mapLoadRadius)) [1..(2*mapLoadRadius+1)^2]
       (gmap', mBuff') <- initChunks lst (_gmap, _mapBuffer) 
-      return $ (st & gmap .~ gmap') & mapBuffer .~ mBuff'
+      return $ st & gmap .~ gmap' & mapBuffer .~ mBuff'
 
 
     doDraw (GameState {..}) = do
