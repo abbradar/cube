@@ -65,7 +65,7 @@ data GameInitialState = GameInitialState { pls :: Pipelines
                                          , xDataTemplates :: XTemplates
                                          }
 
-data PlayerState = Idle | Running deriving (Eq,Ord,Enum,Show)
+data PlayerState = Idle | Running | Attack Word32 deriving (Eq,Ord,Show)
 
 data GameState = GameState { _camera :: Camera
                            , _gmap :: Map
@@ -152,7 +152,9 @@ main = do
 
     animRun <- loadAnimation xDataTemplates "data/xobjects/humanRun.x" skeleton
     animIdle <- loadAnimation xDataTemplates "data/xobjects/humanIdle.x" skeleton
-    let anims = [(1.0, animRun), (0.5, animIdle)]
+    animAtk <- loadAnimation xDataTemplates "data/xobjects/humanAtk.x" skeleton
+  
+    let anims = [(1.0, animRun), (0.5, animIdle), (1, animAtk)]
     -- map
     let
       posns = Prelude.map (+ (V2 (-1) (-1))) [V2 (-1) (-1), V2 (-1) 0, V2 (-1) 1, V2 (-1) 2, V2 (0) (-1), V2 (0) 0, V2 (0) 1, V2 (0) 2, V2 (1) (-1), V2 (1) 0, V2 (1) 1, V2 (1) 2, V2 (2) (-1), V2 (2) 0, V2 (2) 1, V2 (2) 2]
@@ -221,20 +223,28 @@ drawLoop w (GameSettings {..}) (GameInitialState {..}) = loop
         Released -> Just (st & leftButton .~ False)
       _ -> Just st
 
-    updateState = updatePos . updateLook 
+    updateState = updatePlayer . updateLook
 
     updateStateMonadic = updateMap
 
 
-    updatePos st@(GameState {..}) = st & playerState .~ state & playerPos .~ (V3 (x+dx1) (y+dy1) (fromIntegral z1 - 16)) & camera %~ setEye (V3 (x+dx1) (y+dy1) (fromIntegral z1 - 16+1))
+    updatePlayer st@(GameState {..}) = st & playerState %~ state & playerPos .~ (V3 (x+dx1) (y+dy1) (fromIntegral z1 - 16)) & camera %~ setEye (V3 (x+dx1) (y+dy1) (fromIntegral z1 - 16+1))
       --let (V4 x y z _) = (viewMatrix _camera) !* (vector (movementSpeed * fromIntegral _frameTime *^ delta)) in st & camera %~ moveEye (V3 x y z) 
       where (V3 x y z) = _eye _camera 
-            (V3 dx dy _) = (movementSpeed * fromIntegral _frameTime *^ delta)
-            delta = normalize $ fwd + back + left + right-- + up + down
+            (V3 dx dy _) = if ((state _playerState) == Running) then (movementSpeed * fromIntegral _frameTime *^ delta) else V3 0.0 0.0 0.0
+            delta = normalize $ fwd + back + left + right -- + up + down
 
             (V3 x' y' z') = delta
-            state = if (nearZero x') && (nearZero y') then Idle else Running 
-            
+
+            -- check current state of the player
+            state :: PlayerState -> PlayerState
+            state (Attack time') = if _leftButton || (_currentTime - time' < 1000) then updateAttack time' else
+                                     if (nearZero x') && (nearZero y') then Idle else Running
+            state _ = if _leftButton then (Attack _currentTime) else
+                        if (nearZero x') && (nearZero y') then Idle else Running
+
+            updateAttack time' = if (_currentTime - time' < 1000) then (Attack time') else Attack _currentTime
+                        
             dx1 = dx * (cos phi) - dy * (sin phi)
             dy1 = dx * (sin phi) + dy * (cos phi)
             (V2 phi _) = _angles _camera
@@ -358,8 +368,11 @@ drawLoop w (GameSettings {..}) (GameInitialState {..}) = loop
 
         let modelMatrix = scaleMatrix (V3 0.3 0.3 0.3) $ transpose $ let (V2 phi _) = (_angles _camera) in mkTransformation (Quaternion (cos $ (phi+pi/2)/2) (V3 0 0 (sin $ (phi+pi/2)/2))) (_playerPos)
                     -- (inv44 (viewMatrixAngle _camera 0))                                                             
-        let animNumber = if (_playerState == Running) then 0 else 1
-        drawS DContext {cpl = cspl, cmvM = ( modelMatrix !*! mvM)} sobject (updateSkeleton skeleton (snd (anims !! animNumber)) ((fst (anims !! animNumber))*(fromIntegral _currentTime)/1000.0))
+        let (animNumber, tme') = case _playerState of
+                                   Running -> (0, _currentTime)
+                                   Idle -> (1, _currentTime)
+                                   Attack tme'' -> (2, _currentTime - tme'')
+        drawS DContext {cpl = cspl, cmvM = ( modelMatrix !*! mvM)} sobject (updateSkeleton skeleton (snd (anims !! animNumber)) ((fst (anims !! animNumber))*(fromIntegral tme')/1000.0))
         --drawS DContext {cpl = cspl, cmvM = mvM} sobject skeleton
         
       runPendingFinalizers
