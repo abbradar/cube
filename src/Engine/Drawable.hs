@@ -10,6 +10,7 @@ module Engine.Drawable
   , initializeI
   , initializeS
   , draw
+  , updateSkeleton
   , drawS
   , drawChunks
   , drawChunk
@@ -24,6 +25,7 @@ import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as M
 import qualified Data.IntMap.Strict as IM
 import qualified Graphics.Caramia as C
+import qualified Data.Vector.Storable as VS
 import Linear.V2
 import Linear.V3
 import Linear.V4
@@ -117,13 +119,37 @@ initializeS objd skel = do
 -- FIX to a one function with a choice of a shader inside?
 
 draw :: DContext -> Object -> C.DrawT IO ()
+
+draw ctxt obj@(Object{bones = Nothing}) = do
+    drawFrame (buffers obj) pModelView pTexture (cmvM ctxt) (cPl plData)
+    where
+      plData = cpl ctxt
+      checkPositive a = if a >= 0 then a else error "Uniform not found"
+      pModelView = checkPositive $ fromJust $ M.lookup "modelView" (cUniformsLoc plData)
+      pTexture = checkPositive $ fromJust $ M.lookup "texture" (cUniformsLoc plData)
+      
 draw _ _ = undefined
---draw ctxt obj@(Object{bones = Nothing}) = do
---    drawFrame (buffers obj) (cmvMLoc ctxt) (ctexLoc ctxt) (cmvM ctxt) (cpl ctxt)
 
 --draw ctxt obj@(Object{bones = Just bns}) = undefined--do
 --    SetShader pl DEF_SKINNED
-          
+
+
+-- updates frame matrices given a list of animations, time scale is [0,1]
+-- no interpolation so far
+updateSkeleton :: FrameTree -> [Animation] -> Float -> FrameTree
+updateSkeleton skeleton [] _ = skeleton
+updateSkeleton skeleton ((name, transforms):s) time = updateSkeleton skeleton' s time
+  where
+    matnumber :: Int
+    matnumber = floor ((fromIntegral $ VS.length transforms)*(snd $ properFraction time))
+    transform = transforms VS.! matnumber
+    changeFrameTransform Frame{ fmesh = m, fname = n,  tname = t, ftransform = tr } mat = Frame{ fmesh = m, fname = n,  tname = t, ftransform = mat}
+    skeleton' = animTreeRecUpdate skeleton
+    animTreeRecUpdate (Node root children)
+      | (fname root) == (Just name) = Node{rootLabel = (changeFrameTransform root transform), subForest = (map animTreeRecUpdate children)}
+      | otherwise = Node{rootLabel = root, subForest = (map animTreeRecUpdate children)}
+
+           
 --    drawFrameS (buffers obj) (cmvMLoc ctxt) (ctexLoc ctxt) (cmvM ctxt) (cpl ctxt)
 
 drawS :: DContext -> Object -> FrameTree -> C.DrawT IO ()
@@ -133,21 +159,21 @@ drawS ctxt obj@(Object{bones = Just bnes}) skeleton = do
     C.setUniform (cmvM ctxt) pModelView pl
 
     drawSFrame (buffers obj) bonesR pTexture pOffset pBones pl
-
     where plData = (cpl ctxt)
           pl = cPl $ plData
-          pOffset = fromJust $ M.lookup "offset" (cUniformsLoc plData)
-          pBones = fromJust $ M.lookup "bones" (cUniformsLoc plData)
-          pModelView = fromJust $ M.lookup "modelView" (cUniformsLoc plData)
-          pTexture = fromJust $ M.lookup "texture" (cUniformsLoc plData)
+          checkPositive a = if a >= 0 then a else error "Uniform not found"
+          pOffset = checkPositive $ fromJust $ M.lookup "offset" (cUniformsLoc plData)
+          pBones = checkPositive $ fromJust $ M.lookup "bones" (cUniformsLoc plData)
+          pModelView = checkPositive $ fromJust $ M.lookup "modelView" (cUniformsLoc plData)
+          pTexture = checkPositive $ fromJust $ M.lookup "texture" (cUniformsLoc plData)
     
           bonesR = genTransfMats
-          skelmats = fmap (ftransform) skeleton
+          genTransfMats = flatten skelrec
           skelrec = (treeRecUpdate skelmats identity)
- --         treeRecUpdate :: (Tree MF44) -> MF44 -> (Tree MF44)
+          -- treeRecUpdate :: (Tree MF44) -> MF44 -> (Tree MF44)
           treeRecUpdate (Node root children) mat = Node{rootLabel = (root !*! mat), subForest = (map (\x -> treeRecUpdate x (root !*! mat)) children)}
           -- FIXME needs to recursively compute the transform
-          genTransfMats = flatten skelrec
+          skelmats = fmap (ftransform) skeleton
 
 drawS ctxt obj@(Object{bones = Nothing}) _ = undefined--do
 

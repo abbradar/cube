@@ -40,10 +40,24 @@ projectionMatrix (Camera {..}) = transpose $ perspective _fov _ratio _nplane _fp
 
 viewMatrix :: Camera -> MF44
 viewMatrix (Camera {..}) = let (V2 phi psi) = _angles in transpose $ lookAt _eye (_eye + (V3 (cos(psi)*cos(phi)) (cos(psi)*sin(phi)) (sin(psi)))) upvector
-    
+
+viewMatrixAngle :: Camera -> Float -> MF44
+viewMatrixAngle (Camera {..}) psi = let (V2 phi _) = _angles in transpose $ lookAt _eye (_eye + (V3 (cos(psi)*cos(phi)) (cos(psi)*sin(phi)) (sin(psi)))) upvector
+
+viewMatrixLookAt :: Camera -> Float -> MF44
+viewMatrixLookAt (Camera{..}) dist = let (V2 phi psi) = _angles in transpose $ lookAt (_eye - (V3 (dist*cos(psi)*cos(phi)) (dist*cos(psi)*sin(phi)) (dist*sin(psi)))) _eye upvector
+                                                         
 
 moveEye :: F3 -> Camera -> Camera
 moveEye vec cam@(Camera {..}) = cam { _eye = (_eye + vec)}
+
+
+setEye :: F3 -> Camera -> Camera
+setEye vec cam@(Camera {..}) = cam { _eye = vec}
+
+
+scaleMatrix :: F3 -> MF44 -> MF44
+scaleMatrix (V3 x y z) mat = (V4 (V4 x 0 0 0) (V4 0 y 0 0) (V4 0 0 z 0) (V4 0 0 0 1)) !*! (mat)
 
 -- Expects relative move of the mouse in range [-1; 1]
 rotateEyes :: F2 -> Camera -> Camera

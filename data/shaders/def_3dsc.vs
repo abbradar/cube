@@ -1,7 +1,7 @@
 #version 330 core
 
 uniform mat4 projectionMat;
-uniform mat4 mVMat;
+uniform mat4 modelViewMat;
 #define MAX_BONES 4
 #define MAX_BONES_PER_MESH 32
 
@@ -35,6 +35,6 @@ void main()
     norm += weight[ind] * bonesMat[ind] * offsetMat[ind] * vec4(inorm, 0.0f);
   }
 
-  gl_Position = projectionMat * mVMat * pos;
+  gl_Position = projectionMat * modelViewMat * pos;
   onorm = (norm).xyz;
 }

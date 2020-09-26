@@ -26,6 +26,7 @@ import Linear.V2
 import Linear.V3
 import Linear.V4
 import Linear.Matrix
+import Linear.Quaternion
 import Foreign.Storable.Tuple ()
 import Text.InterpolatedString.Perl6 (qq)
 
@@ -40,6 +41,8 @@ import Engine.Types
 import Engine.Mesh
 
 import Debug.Trace
+
+import qualified Control.Monad.Fail as Fail
 
 
  -- bones data for loading
@@ -99,15 +102,75 @@ loadFrameX' tmpls path ldMesh = do
 
 -- loads animations
 
+-- loads only one animation set!
 loadAnimation :: XTemplates -> FilePath -> FrameTree -> IO ([Animation])
 loadAnimation tmpls path skeleton = do
   vals <- parseFromFile (directX' True tmpls) path
-  return $ map loadAnimation' $ checkEmpty $ filter (\x -> dataTemplate x == "Animation") $ xData vals
+  return $ map loadAnimation' $ getAnimations $ filter (\x -> dataTemplate x == TName "AnimationSet") $ xData vals
   where
-    checkEmpty x = if(x == []) then fail "cannot find animations" else Debug.Trace.trace "lol" x
+    getAnimations :: [Data] -> [Data]
+    getAnimations [] = error "cannot find any animations"
+    getAnimations (s:_) = dataChildren s
 
 loadAnimation' :: Data -> Animation
-loadAnimation' dt = error "Dick Cockz"
+loadAnimation' dt = let frame = fromMaybe (error "animation cannot be loaded") (do
+                          frme <- searchFieldT "Frame" $ dataChildren dt
+                          return $ dataName frme)
+                    in (dNameToBytestring (fromMaybe (error "no frame name") frame), VS.fromList (constructKeys keys))
+ where
+   keys = filter (\dt -> dataTemplate dt == TName "AnimationKey") $ dataChildren dt
+
+   constructMatrix1 :: [(F4, F3, F3)] -> [MF44]
+   constructMatrix1 x = map (\ ((V4 _r1 _r2 _r3 _r4), _s, _t) -> Linear.Matrix.transpose $ mkTransformationMat (Linear.Matrix.transpose $ fromQuaternion (Quaternion _r1 (V3 _r2 _r3 _r4))) _t) x
+   
+   constructKeys :: [Data] -> [MF44]
+   constructKeys [] = error "no keys data"
+   constructKeys (k:ks) = fromMaybe (error "no key type attribute found") (do
+     VDWord (DV keyType) <- M.lookup (MName "keyType") $ dataValues k
+     return $ case keyType of 4 -> transforms $ keys' $ dataValues k
+     -- in this case we assume that the keys are in order rotation-translation-scaling as the only .X exporter from blender makes
+                              otherwise -> transforms1 $ map (keys' . dataValues) (k:ks))
+
+   getFloats4 :: Value -> [F4]
+   getFloats4 (VCustom (DA y)) = map (\ x -> fromMaybe (error "no animation transform data found") $ getFloatArray4 x) y
+   getFloatArray4 :: Values -> Maybe F4
+   getFloatArray4 x = do
+     VCustom (DV vals1) <- M.lookup (MName "tfkeys") x
+     VFloat (DA vals) <- M.lookup (MName "values") vals1
+     let [a1, a2, a3, a4] = vals
+     return (V4 a1 a2 a3 a4)
+
+   getFloats3 :: Value -> [F3]
+   getFloats3 (VCustom (DA y)) = map (\ x -> fromMaybe (error "no animation transform data found") $ getFloatArray3 x) y
+   getFloatArray3 :: Values -> Maybe F3
+   getFloatArray3 x = do
+     VCustom (DV vals1) <- M.lookup (MName "tfkeys") x
+     VFloat (DA vals) <- M.lookup (MName "values") vals1
+     let [a1, a2, a3] = vals
+     return (V3 a1 a2 a3)
+
+     
+       
+   transforms1 :: [Value] -> [MF44]
+   transforms1 [ks1, ks2, ks3] = constructMatrix1 $ zip3 (getFloats4 ks1) (getFloats3 ks2) (getFloats3 ks3)
+   transforms1 _ = error "wrong number of animation keys"
+   
+   dNameToBytestring (DName x) = x
+
+   keys' :: Values -> Value
+   keys' x = fromMaybe (error "no keys found") (M.lookup (MName "keys") x)
+   constructMatrix :: Values -> Maybe MF44
+   constructMatrix x = do
+     VCustom (DV vals1) <- M.lookup (MName "tfkeys") x
+     VFloat (DA vals) <- M.lookup (MName "values") vals1
+     let [a11,a12,a13,a14,a21,a22,a23,a24,a31,a32,a33,a34,a41,a42,a43,a44] = vals
+     return  $ V4 (V4 a11 a12 a13 a14) (V4 a21 a22 a23 a24) (V4 a31 a32 a33 a34) (V4 a41 a42 a43 a44)
+
+   transforms :: Value -> [MF44]
+   transforms (VCustom (DA y)) = map (\ x ->  fromMaybe (error "no animation transform matrix found") $ constructMatrix x) y
+   transforms _ = error "wrong data"
+
+
 
 -- searches in the list of data an element with coinciding template
 searchFieldT :: ByteString -> [Data] -> Maybe Data
@@ -132,13 +195,13 @@ loadFrameTree' ldMesh dt
       
 -- "frameMatrix" from data
 getMatrix :: Maybe Data -> MF44
-getMatrix d = getMatrix' d "frameMatrix"
+getMatrix d = getMatrix' d "frameMatrix" "matrix"
 -- matrix by name from data
-getMatrix' :: Maybe Data -> ByteString -> MF44
-getMatrix' Nothing _ = identity
-getMatrix' (Just d) mname = fromMaybe (error "invalid transform matrix") $ do
+getMatrix' :: Maybe Data -> ByteString -> ByteString -> MF44
+getMatrix' Nothing _ _ = identity
+getMatrix' (Just d) mname mname1 = fromMaybe (error "invalid transform matrix") $ do
     VCustom (DV data1) <- M.lookup (MName mname) $ dataValues d
-    VFloat (DA vals) <- M.lookup "matrix" data1
+    VFloat (DA vals) <- M.lookup (MName mname1) data1
     let [a11,a12,a13,a14,a21,a22,a23,a24,a31,a32,a33,a34,a41,a42,a43,a44] = vals
     return  $ V4 (V4 a11 a12 a13 a14) (V4 a21 a22 a23 a24) (V4 a31 a32 a33 a34) (V4 a41 a42 a43 a44)
 
@@ -150,7 +213,7 @@ loadMaterial dt = do
     VString (DV nm) <- M.lookup "filename" $ dataValues ( tname )
     return nm
 
-maybeM :: MonadFail m => String -> Maybe a -> m a
+maybeM :: Fail.MonadFail m => String -> Maybe a -> m a
 maybeM err Nothing = fail err
 maybeM _ (Just a) = return a
 
@@ -181,14 +244,25 @@ loadVerts dt = do
     let verts' = map verts1 vertices
     return verts'
 
+
+
+-- unpacks normals numbers
+norms_ :: Values -> [Word32]
+norms_ p = fromMaybe [] $ do VDWord (DA faceIndices) <- M.lookup "faceVertexIndices" p
+                             return faceIndices
+
 -- loads list of normals
 loadNorms :: Data -> Maybe [V3 Float]
 loadNorms dt = do 
     let dtn = searchFieldT "MeshNormals" $ dataChildren dt
     dtn1 <- maybeM "no normals data found" dtn
     VCustom (DA normals) <- M.lookup "normals" $ dataValues dtn1
-    let norms' = map verts1 normals
-    return norms'
+    VCustom (DA vertNormals) <- M.lookup "faceNormals" $ dataValues dtn1
+    let  vertNorms' = concat $ map norms_ vertNormals
+    return $ listNorms normals vertNorms'
+    where
+      norms' y = VS.fromList $ map verts1 y;
+      listNorms y z = map (\ x -> (norms' y) VS.! (fromIntegral x)) z
 
 -- loads list of texture coordinates
 loadCoords :: Data -> Maybe [V2 Float]
@@ -210,7 +284,7 @@ loadWeights dt = do
     VDWord (DA binds) <- M.lookup "vertexIndices" $ dataValues dt
     VFloat (DA bweights) <- M.lookup "weights" $ dataValues dt
     --VCustom (DV boffset) <- M.lookup "matrixOffset" $ dataValues dt
-    let boffset' = getMatrix' (Just dt) "matrixOffset"
+    let boffset' = getMatrix' (Just dt) "matrixOffset" "matrix"
     return $ BonesData bnm (zip (map fromIntegral binds) (bweights)) boffset'
 
 -- loads list of bones
@@ -284,16 +358,21 @@ loadSMesh dt = do
     norms <- loadNorms dt
     --coords
     coords <- loadCoords dt
-    -- gluing together
+    -- skin data
     skdata <- bonesToVertices (length verts) <$> loadBones dt
-
+    
     indlist <- forM inds $ \case
-      [a, b, c] -> return (fromIntegral <$> V3 a b c)
+      [a, b, c] -> return ([fromIntegral <$> V3 a b c])
+      [a, b, c, d] -> return ([fromIntegral <$> V3 a b c, fromIntegral <$> V3 a c d])
+      [a, b, c, d, e] -> return ([fromIntegral <$> V3 a b c, fromIntegral <$> V3 a c d, fromIntegral <$> V3 a d e])
+      [a, b, c, d, e, f] -> return ([fromIntegral <$> V3 a b c, fromIntegral <$> V3 a c d, fromIntegral <$> V3 a d e, fromIntegral <$> V3 a e f])
       _ -> fail "invalid points number"
+      
+    -- gluing together
     let vertlist = zipWith4 SVertexD verts norms coords (sdvertices skdata)
 
     return $ SM SMesh { svertices = VS.fromList vertlist
-                , sindices = VS.fromList indlist
+                , sindices = VS.fromList (concat indlist)
                 , sbones = sdbones skdata
                 }
 

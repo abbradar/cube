@@ -10,7 +10,6 @@ module Engine.Mesh
        , Bones
        , SkinData(..)
        , Animation
-       , AnimationSet
        , generateSkeleton
        , MeshBuffer
        , initMeshBuffer
@@ -72,11 +71,6 @@ type BonesInfo = [(Int, MF44)]
 
 type Animation = (ByteString, VS.Vector MF44)
 
-data AnimationSet = AnimationSet { anumber :: Int
-                                 , animations :: [Animation]
-                                 , currAnum :: Animation
-                                 , currTime :: Float
-                                 }
 
 --  "I(nanimate)Foo - S(kinned)Foo - Foo = (IF IFoo | SF SFoo) "
 
@@ -260,9 +254,6 @@ texture (ImageRGB8 image@(Image w h _)) = do
 
 texture _  = fail "format not available, we currently use only ImageRGB8"
 
---loadAnimation :: Data -> Animation
---loadAnimation dt = (lgth, animState, keys)
---  where keys = genSkel
 
 -- initializes frame buffer. fdir is for the texture.
 -- Maybe we should put it somwhere else

@@ -2,6 +2,7 @@ module Engine.Framerate
        ( FPSLimit
        , newFPSLimit
        , fpsDelay
+       , getTicks
        ) where
 
 import Data.Word
@@ -12,6 +13,9 @@ import SDL.Time
 
 -- | FPS limiter using SDL timer.
 newtype FPSLimit = FPSLimit (IORef Word32)
+
+getTicks :: IO Word32
+getTicks = ticks
 
 -- | Create initial 'FPSLimit'.
 newFPSLimit :: IO FPSLimit
