@@ -3,6 +3,7 @@ module Engine.Map
   , MapBuffer
   , ChunkBuffer
   , getChunk
+  , getClosestGroundMap
   , gBlock'
   , createChunkMeshes
   , createChunkMesh'
@@ -66,6 +67,14 @@ getChunk mp@(Map {..}) pos = fmap fst $ (M.lookup pos chunks)
 getChunkUnsafe :: Map -> HorizontalPos -> Chunk
 getChunkUnsafe mp@(Map {..}) (flip M.lookup chunks -> Just (chunk, m)) = chunk
 getChunkUnsafe _ pos = error $ "Non-existing chunk at " Prelude.++ (show pos)
+
+
+getClosestGroundMap :: Map -> F3 -> F3
+getClosestGroundMap mp pos@(V3 x y z) = V3 x y (fromIntegral z1)
+  where
+    (V3 _ _ z1) = getClosestGround chck $ (fromIntegral <$> (V3 0 0 (floor z))) + ((\x -> mod x chunkWidth) <$> floor <$> (V3 x y 0))
+    chck = fromMaybe (error "chunk is not initialized") $ getChunk mp ((\x -> div x chunkWidth) <$> (floor <$> (V2 x y)))
+
   
 newChunk :: Map -> HorizontalPos -> Map
 newChunk mp@(Map {..}) (flip M.lookup chunks -> Just _) = mp

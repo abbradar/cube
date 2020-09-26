@@ -29,6 +29,7 @@ library
                      , Engine.Camera
                      , Engine.Framerate
                      , Engine.Types
+		     , Game.Characters
                      , Foreign.Storable.Generic
   default-extensions:  OverloadedStrings
                      , ScopedTypeVariables
@@ -87,6 +88,7 @@ executable triangle
                      , data-default
                      , data-default-class >= 0.1.0
                      , containers
+		     , bytestring
   ghc-options:         -Wall -threaded -auto-all
   default-language:    Haskell2010
 

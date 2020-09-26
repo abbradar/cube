@@ -18,6 +18,7 @@ import Graphics.Caramia hiding (normalize, draw)
 import qualified Graphics.Caramia as Car
 import SDL hiding (initialize)
 import qualified SDL
+import Data.ByteString (ByteString)
 --import SDL.Time (ticks)
 
 import Engine.Drawable
@@ -28,6 +29,8 @@ import Engine.Map
 import Engine.Chunk
 import Engine.Loaders
 import Engine.Types
+
+import Game.Characters
   
 import Data.DirectX
 import qualified Data.Tree as DT
@@ -52,25 +55,23 @@ data DirectionalLight = DirectionalLight { lcolor :: V3 Float
                                          }
                   deriving (Show, Read, Eq)
 
+
+
 data GameInitialState = GameInitialState { pls :: Pipelines
 --                                         , pls :: Pipeline
-                                         , object :: Object
-                                         , sobject :: Object
-                                         , anims :: [(Float, [Animation])]
+                                         , animObjects :: M.Map ByteString AnimObjData
                                         -- , gmap :: Map
                                         -- , mapBuffer :: MapBuffer
-                                         , skeleton :: FrameTree
                                          , light :: DirectionalLight
                                          , fpsLimit :: FPSLimit
                                          , xDataTemplates :: XTemplates
                                          }
 
-data PlayerState = Idle | Running | Attack Word32 deriving (Eq,Ord,Show)
 
 data GameState = GameState { _camera :: Camera
                            , _gmap :: Map
-                           , _playerPos :: F3
-                           , _playerState :: PlayerState
+                           , _playerData :: PlayerData
+                           , _monsterData :: [MonsterData]
                            , _mapBuffer :: MapBuffer
                            , _leftButton :: Bool
                            , _pressedKeys :: Set Keycode
@@ -81,6 +82,10 @@ data GameState = GameState { _camera :: Camera
                            }
 
 $(makeLenses ''GameState)
+
+
+$(makeLenses ''PlayerData)
+$(makeLenses ''MonsterData)
 
 newPipelineDebugVF :: MonadIO m => T.Text -> T.Text -> AttributeBindings -> m Pipeline
 newPipelineDebugVF vert_src frag_src bindings = do
@@ -141,20 +146,30 @@ main = do
     let pls = M.fromList [("default", pl), ("skinned", spl), ("colored", cpl)]
 
     -- .X files
-    objd <- loadFromFile xDataTemplates "data/xobjects/" "lzom.x" False
-    object <- initializeI objd
+    --objd <- loadFromFile xDataTemplates "data/xobjects/" "lzom.x" False
+    --object <- initializeI objd
 
-    sobjd <- loadFromFile xDataTemplates "data/xobjects/" "human1.x" True
-    skeleton <- loadFrameIX xDataTemplates "data/xobjects/human1.x"
-    print $ map fname (DT.flatten skeleton)
+    sPlayerData <- loadFromFile xDataTemplates "data/xobjects/" "human1.x" True
+    playerSkeleton <- loadFrameIX xDataTemplates "data/xobjects/human1.x"
+    --print $ map fname (DT.flatten skeleton)
 
-    sobject <- initializeS sobjd skeleton
+    sPlayer <- initializeS sPlayerData playerSkeleton
 
-    animRun <- loadAnimation xDataTemplates "data/xobjects/humanRun.x" skeleton
-    animIdle <- loadAnimation xDataTemplates "data/xobjects/humanIdle.x" skeleton
-    animAtk <- loadAnimation xDataTemplates "data/xobjects/humanAtk.x" skeleton
+    animPlayerRun <- loadAnimation xDataTemplates "data/xobjects/humanRun.x" playerSkeleton
+    animPlayerIdle <- loadAnimation xDataTemplates "data/xobjects/humanIdle.x" playerSkeleton
+    animPlayerAtk <- loadAnimation xDataTemplates "data/xobjects/humanAtk.x" playerSkeleton
+
+    sZombieData <- loadFromFile xDataTemplates "data/xobjects/" "zombie1.x" True
+    animZombieIdle <- loadAnimation xDataTemplates "data/xobjects/zombie1Atk.x" playerSkeleton
+
+    
+    sZombie <- initializeS sZombieData playerSkeleton
   
-    let anims = [(1.0, animRun), (0.5, animIdle), (1, animAtk)]
+    let anims = M.fromList [("run", (1.0, animPlayerRun)), ("idle", (0.5, animPlayerIdle)), ("atk", (1.0, animPlayerAtk))]
+    let zAnims = M.fromList [("idle", (0.33, animZombieIdle))]
+    let animObjects = M.fromList [("player", AnimObjData {_object = sPlayer, _skeleton = playerSkeleton, _anims = anims}),
+                                  ("zombie", AnimObjData {_object = sZombie, _skeleton = playerSkeleton, _anims = zAnims})]
+    
     -- map
     let
       posns = Prelude.map (+ (V2 (-1) (-1))) [V2 (-1) (-1), V2 (-1) 0, V2 (-1) 1, V2 (-1) 2, V2 (0) (-1), V2 (0) 0, V2 (0) 1, V2 (0) 2, V2 (1) (-1), V2 (1) 0, V2 (1) 1, V2 (1) 2, V2 (2) (-1), V2 (2) 0, V2 (2) 1, V2 (2) 2]
@@ -169,12 +184,14 @@ main = do
                                  }
     fpsLimit <- newFPSLimit
     tme <- getTicks
- 
+
+    let mData = MonsterData {_mPosition = (getClosestGroundMap gmp (V3 7.0 11.0 31.0)) - (V3 0.0 0.0 16.0), _mAngle = 2.2, _mState = Idle, _mObjectName = "zombie"}
+  
     let initialState = GameInitialState {..}
         state0 = GameState { _camera = def
                            , _gmap = gmp
-                           , _playerPos = V3 0 0 16
-                           , _playerState = Idle
+                           , _playerData = PlayerData{ _pPosition = V3 0.0 0.0 16.0, _pAngle = 0.0, _pState = Idle, _pObjectName = "player" }
+                           , _monsterData = [mData]
                            , _mapBuffer = mBuff
                            , _pressedKeys = S.empty
                            , _leftButton = False
@@ -187,6 +204,8 @@ main = do
 
   glDeleteContext c
   destroyWindow w
+
+
 
 -------------------------------------------------------------------------------------------------------
 ------------------------------------------ GAME LOOP --------------------------------------------------
@@ -228,10 +247,13 @@ drawLoop w (GameSettings {..}) (GameInitialState {..}) = loop
     updateStateMonadic = updateMap
 
 
-    updatePlayer st@(GameState {..}) = st & playerState %~ state & playerPos .~ (V3 (x+dx1) (y+dy1) (fromIntegral z1 - 16)) & camera %~ setEye (V3 (x+dx1) (y+dy1) (fromIntegral z1 - 16+1))
+    updatePlayer st@(GameState {..}) = st & playerData %~ pState %~ state
+                                       & playerData %~ pAngle .~ phi
+                                       & playerData %~ pPosition .~ (V3 (x+dx1) (y+dy1) (z1 - 16.0))
+                                       & camera %~ setEye (V3 (x+dx1) (y+dy1) (z1 - 16.0+1.0))
       --let (V4 x y z _) = (viewMatrix _camera) !* (vector (movementSpeed * fromIntegral _frameTime *^ delta)) in st & camera %~ moveEye (V3 x y z) 
       where (V3 x y z) = _eye _camera 
-            (V3 dx dy _) = if ((state _playerState) == Running) then (movementSpeed * fromIntegral _frameTime *^ delta) else V3 0.0 0.0 0.0
+            (V3 dx dy _) = if ((state (_pState _playerData)) == Running) then (movementSpeed * fromIntegral _frameTime *^ delta) else V3 0.0 0.0 0.0
             delta = normalize $ fwd + back + left + right -- + up + down
 
             (V3 x' y' z') = delta
@@ -249,9 +271,8 @@ drawLoop w (GameSettings {..}) (GameInitialState {..}) = loop
             dy1 = dx * (sin phi) + dy * (cos phi)
             (V2 phi _) = _angles _camera
 
-            (V3 _ _ z1) = getClosestGround chck $ (fromIntegral <$> (V3 0 0 31)) + ((\x -> mod x chunkWidth) <$> floor <$> (V3 (x+dx1) (y+dy1) 0))
-            chck = May.fromMaybe (error "chunk with the player is not initialized") $ getChunk _gmap ((\x -> div x chunkWidth) <$> (floor <$> (V2 (x+dx1) (y+dy1))))
-              
+            (V3 _ _ z1) = getClosestGroundMap _gmap (V3 (x+dx1) (y+dy1) (31.0))
+            
             moveKey k v
               | k `S.member` _pressedKeys = v
               | otherwise = V3 0 0 0
@@ -365,17 +386,29 @@ drawLoop w (GameSettings {..}) (GameInitialState {..}) = loop
         --setUniform ((viewMatrix _camera) !*! mvM) pModelView spl
    
         -- skinned model render
-
-        let modelMatrix = scaleMatrix (V3 0.3 0.3 0.3) $ transpose $ let (V2 phi _) = (_angles _camera) in mkTransformation (Quaternion (cos $ (phi+pi/2)/2) (V3 0 0 (sin $ (phi+pi/2)/2))) (_playerPos)
+        -- player render
+        let modelMatrix = scaleMatrix (V3 0.3 0.3 0.3) $ transpose $ let phi = (_playerData & _pAngle) in
+              mkTransformation (Quaternion (cos $ (phi+pi/2)/2) (V3 0 0 (sin $ (phi+pi/2)/2))) (_playerData & _pPosition)
                     -- (inv44 (viewMatrixAngle _camera 0))                                                             
-        let (animNumber, tme') = case _playerState of
-                                   Running -> (0, _currentTime)
-                                   Idle -> (1, _currentTime)
-                                   Attack tme'' -> (2, _currentTime - tme'')
-        drawS DContext {cpl = cspl, cmvM = ( modelMatrix !*! mvM)} sobject (updateSkeleton skeleton (snd (anims !! animNumber)) ((fst (anims !! animNumber))*(fromIntegral tme')/1000.0))
+        let (animName, tme') = case _pState _playerData of
+                                   Running -> ("run", _currentTime)
+                                   Idle -> ("idle", _currentTime)
+                                   Attack tme'' -> ("atk", _currentTime - tme'')
+        let playerContext = DContext {cpl = cspl, cmvM = ( modelMatrix !*! mvM)}
+        drawAnimated playerContext (May.fromMaybe (error "no player model found") $ M.lookup (_playerData & _pObjectName) animObjects) animName $ (fromIntegral tme')/1000.0
+        --drawS DContext {cpl = cspl, cmvM = ( modelMatrix !*! mvM)} sobject (updateSkeleton skeleton (snd (anim animName)) ((fst (anim animName))*(fromIntegral tme')/1000.0))
+
+        -- monsters render
+        let mDta = _monsterData !! 0
+        let modelMatrix = scaleMatrix (V3 0.3 0.3 0.3) $ transpose $ let phi = (mDta & _mAngle) in
+              mkTransformation (Quaternion (cos $ (phi+pi/2)/2) (V3 0 0 (sin $ (phi+pi/2)/2))) (mDta & _mPosition)
         --drawS DContext {cpl = cspl, cmvM = mvM} sobject skeleton
+        
+        let zombieContext = DContext {cpl = cspl, cmvM = ( modelMatrix !*! mvM)}
+        drawAnimated zombieContext (May.fromMaybe (error "no player model found") $ M.lookup (mDta & _mObjectName) animObjects) "idle" $ (fromIntegral _currentTime)/1000.0
         
       runPendingFinalizers
       glSwapWindow w
       where cpl = May.fromJust $ M.lookup "colored" pls
             spl = May.fromJust $ M.lookup "skinned" pls
+            

@@ -6,12 +6,14 @@ module Engine.Drawable
   , Pipelines
   , DContext(..)
   , MapContext(..)
+  , AnimObjData(..)
   , loadFromFile
   , initializeI
   , initializeS
   , draw
   , updateSkeleton
   , drawS
+  , drawAnimated
   , drawChunks
   , drawChunk
   ) where
@@ -74,6 +76,12 @@ data ObjectD = ObjectD { frames :: FrameTree
 data Object = Object { buffers :: FrameBufferTree
                      , bones :: Maybe FrameTree
                      }
+
+data AnimObjData = AnimObjData { _object :: Object
+                               , _skeleton :: FrameTree
+                               , _anims :: M.Map ByteString (Float, [Animation])
+                               }
+
 
 -- OBSOLETE data SObject = SObject { sbuffers :: FrameBufferTree
 --                       ,  bones :: Bones
@@ -151,6 +159,14 @@ updateSkeleton skeleton ((name, transforms):s) time = updateSkeleton skeleton' s
 
            
 --    drawFrameS (buffers obj) (cmvMLoc ctxt) (ctexLoc ctxt) (cmvM ctxt) (cpl ctxt)
+
+
+
+drawAnimated :: DContext -> AnimObjData -> ByteString -> Float -> C.DrawT IO ()
+drawAnimated ctxt dt@(AnimObjData{..}) animName animTime = do
+  drawS ctxt _object (updateSkeleton _skeleton (snd anim) $ (fst anim)*animTime)
+  where
+    anim = fromMaybe (error "no required animation found") $ M.lookup animName _anims
 
 drawS :: DContext -> Object -> FrameTree -> C.DrawT IO ()
 drawS ctxt obj@(Object{bones = Just bnes}) skeleton = do
