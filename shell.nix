@@ -13,6 +13,7 @@ let
   haskellPackages = haskellPackages_.override {
     overrides = self: super: {
       caramia = lib.dontCheck (self.callPackage ./3rdparty/caramia { });
+      wires = self.callPackage ./3rdparty/wires { };
     };
   };
 

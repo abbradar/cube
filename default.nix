@@ -1,8 +1,10 @@
-{ mkDerivation, attoparsec, base, bytestring, c-storable-deriving
-, caramia, containers, criterion, data-default, data-default-class
-, hsnoise, interpolatedstring-perl6, JuicyPixels, lens, linear
-, scientific, sdl2, stdenv, storable-tuple, text, transformers
-, uuid-types, vector
+{ mkDerivation, aeson, async, attoparsec, attoparsec-binary, base
+, base64-bytestring, bytestring, bytestring-mmap
+, bytestring-to-vector, caramia, containers, directory, exceptions
+, filepath, hashable, hpack, hsnoise, JuicyPixels, lens, linear
+, monad-logger, mtl, reflex, scientific, sdl2, stdenv
+, storable-tuple, string-interpolate, text, unordered-containers
+, vector
 }:
 mkDerivation {
   pname = "cube";
@@ -11,15 +13,20 @@ mkDerivation {
   isLibrary = true;
   isExecutable = true;
   libraryHaskellDepends = [
-    attoparsec base bytestring c-storable-deriving caramia containers
-    data-default data-default-class hsnoise interpolatedstring-perl6
-    JuicyPixels lens linear scientific sdl2 storable-tuple transformers
-    uuid-types vector
+    aeson async attoparsec attoparsec-binary base base64-bytestring
+    bytestring bytestring-mmap bytestring-to-vector caramia containers
+    directory exceptions filepath hashable hsnoise JuicyPixels lens
+    linear monad-logger mtl reflex scientific sdl2 storable-tuple
+    string-interpolate text unordered-containers vector
   ];
+  libraryToolDepends = [ hpack ];
   executableHaskellDepends = [
-    base caramia containers data-default data-default-class lens linear
-    sdl2 text
+    aeson async attoparsec attoparsec-binary base base64-bytestring
+    bytestring bytestring-mmap bytestring-to-vector caramia containers
+    directory exceptions filepath hashable hsnoise JuicyPixels lens
+    linear monad-logger mtl reflex scientific sdl2 storable-tuple
+    string-interpolate text unordered-containers vector
   ];
-  benchmarkHaskellDepends = [ base bytestring criterion ];
+  prePatch = "hpack";
   license = stdenv.lib.licenses.bsd3;
 }

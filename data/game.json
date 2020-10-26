@@ -1,0 +1,12 @@
+{
+    "vertexShader": "shaders/simple.vert",
+    "fragmentShader": "shaders/simple.frag",
+    "models": ["models/cube_test.glb", "models/cube_test_sep.gltf", "models/cube_test_embed.gltf"],
+    "initialWidth": 640,
+    "initialHeight": 480,
+    "nearPlane": 0.1,
+    "farPlane": 10000,
+    "fov": 90,
+    "frameRate": 60,
+    "worldRate": 60
+}

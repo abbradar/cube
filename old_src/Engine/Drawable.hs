@@ -33,7 +33,6 @@ import Linear.V3
 import Linear.V4
 import Linear.Matrix
 
-import Data.DirectX
 import Engine.Types
 import Engine.Mesh
 import Engine.Loaders
@@ -56,8 +55,8 @@ data CPipeline = CPipeline { cPl :: C.Pipeline
                            , cUniformsLoc :: M.Map ByteString C.UniformLocation
                            }
 
-type CPipelines = M.Map ByteString CPipeline
-type Pipelines = M.Map ByteString C.Pipeline
+type CPipelines = Map ByteString CPipeline
+type Pipelines = Map ByteString C.Pipeline
 
 --data Scene = Scene {
 --                   }

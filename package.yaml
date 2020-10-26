@@ -1,0 +1,81 @@
+name: cube
+version: 0.1.0.0
+license: BSD3
+author: abbradar, Tensus
+maintainer: ab@fmap.me
+
+dependencies:
+  - base >= 4.7
+  - bytestring
+  - sdl2
+  - caramia
+  - storable-tuple
+  - bytestring-mmap
+  - bytestring-to-vector
+  - JuicyPixels
+  - hsnoise >= 0.0.2
+  - linear >= 1.20.0
+  - lens
+  - text
+  - vector
+  - exceptions
+  - transformers
+  - mtl
+  - scientific
+  - hashable
+  - unordered-containers
+  - containers
+  - string-interpolate
+  - filepath
+  - directory
+  - attoparsec
+  - attoparsec-binary
+  - base64-bytestring
+  - aeson
+  - monad-logger
+  - async
+  - reflex
+  - ref-tf
+
+default-extensions:
+  - ApplicativeDo
+  - BangPatterns
+  - OverloadedStrings
+  - TupleSections
+  - ScopedTypeVariables
+  - TemplateHaskell
+  - QuasiQuotes
+  - NamedFieldPuns
+  - RecordWildCards
+  - StandaloneDeriving
+  - MultiWayIf
+  - DeriveGeneric
+  - DeriveAnyClass
+  - KindSignatures
+  - TypeApplications
+  - DataKinds
+  - GeneralizedNewtypeDeriving
+  - RankNTypes
+  - TypeFamilies
+  - ConstraintKinds
+  - LambdaCase
+  - DefaultSignatures
+  - TypeOperators
+  - FlexibleContexts
+  - FlexibleInstances
+  - ViewPatterns
+  - DerivingStrategies
+  - MultiParamTypeClasses
+
+ghc-options: -Wall -O2 -fprof-auto
+
+library:
+  source-dirs: src
+
+executables:
+  triangle:
+    main: Triangle.hs
+    source-dirs: exe
+    dependencies:
+      - cube
+    ghc-options: -threaded -rtsopts "-with-rtsopts=-N -T"
