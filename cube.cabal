@@ -36,8 +36,8 @@ library
       Data.WeakCache
       Foreign.Storable.Generic
       Linear.Aeson
+      Reflex.Catch
       Reflex.Logger
-      Reflex.Spider.Catch
   other-modules:
       Paths_cube
   default-extensions: ApplicativeDo BangPatterns OverloadedStrings TupleSections ScopedTypeVariables TemplateHaskell QuasiQuotes NamedFieldPuns RecordWildCards StandaloneDeriving MultiWayIf DeriveGeneric DeriveAnyClass KindSignatures TypeApplications DataKinds GeneralizedNewtypeDeriving RankNTypes TypeFamilies ConstraintKinds LambdaCase DefaultSignatures TypeOperators FlexibleContexts FlexibleInstances ViewPatterns DerivingStrategies MultiParamTypeClasses RecursiveDo

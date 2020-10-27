@@ -9,6 +9,7 @@ import Control.Monad.Logger
 import Graphics.Caramia as Caramia
 import System.FilePath
 import Reflex
+import Reflex.Host.Class
 import SDL hiding (Event)
 
 import Data.Aeson.Utils
@@ -50,6 +51,15 @@ data GameState = GameState { stateCamera :: CameraF
                            , stateNodes :: LoadedNodes
                            }
 
+data GameInitialState = GameInitialState { initialNodes :: LoadedNodes
+                                         }
+
+data GameExtra t = GameExtra { gameResizeHandle :: EventHandle t (V2 Int)
+                             }
+
+data GameAction = GameAction { gameResize :: Maybe (V2 Int)
+                             }
+
 main :: IO ()
 main = do
   args <- getArgs
@@ -73,8 +83,10 @@ main = do
 
     SDL.initialize [InitVideo, InitEvents]
 
+    let myWindowSize = V2 (fromIntegral gameInitialWidth) (fromIntegral gameInitialHeight) :: V2 Int
     window <- createWindow "A Window" defaultWindow { windowInputGrabbed = False
-                                                    , windowInitialSize = V2 (fromIntegral gameInitialWidth) (fromIntegral gameInitialHeight)
+                                                    , windowResizable = True
+                                                    , windowInitialSize = fromIntegral <$> myWindowSize
                                                     , windowGraphicsContext = OpenGLContext defaultOpenGL { glProfile = Core Debug 3 3 }
                                                     }
 
@@ -90,26 +102,36 @@ main = do
       models <- liftIO $ mapM wait modelsPromises
       modelNodes <- mconcat <$> mapM (loadNodes shaderCache) models
 
-      let fov = gameFov * pi / 180
-          initialState = GameState { stateCamera = mempty
-                                   , stateScreen = perspectiveScreen fov (fromIntegral gameInitialWidth / fromIntegral gameInitialHeight) gameNearPlane gameFarPlane
-                                   , stateNodes = modelNodes
-                                   }
+      let initialState = GameInitialState { initialNodes = modelNodes
+                                          }
           gameWindow = GameWindow { gameWindow = window
-                                  , gameFovRadians = fov
+                                  , gameFovRadians = gameFov * pi / 180
                                   , gameSettings = settings
                                   }
-          gameApp :: EventLoopApp GameState
-          gameApp = EventLoopApp { appNetworkSetup = gameNetwork gameWindow initialState
-                                 , appDrawFrame = drawFrame gameWindow
-                                 , appFrameInterval = 1000 `div` fromIntegral gameFrameRate
-                                 , appWorldInterval = 1000 `div` fromIntegral gameWorldRate
+          gameApp :: EventLoopApp GameState GameExtra GameAction
+          gameApp = EventLoopApp { eappNetworkSetup = gameNetwork gameWindow initialState
+                                 , eappDrawFrame = \_extra frame -> drawFrame gameWindow frame
+                                 , eappReadAction = readExtra
+                                 , eappInterpretAction = interpretExtra
+                                 , eappFrameInterval = 1000 `div` fromIntegral gameFrameRate
+                                 , eappWorldInterval = 1000 `div` fromIntegral gameWorldRate
                                  }
 
       runInEventLoop gameApp
 
     glDeleteContext glContext
     destroyWindow window
+
+readExtra :: MonadReadEvent t m => GameExtra t -> m GameAction
+readExtra (GameExtra {..}) = do
+  gameResize <- readEvent gameResizeHandle >>= sequence
+  return GameAction {..}
+
+interpretExtra :: MonadCube m => GameAction -> m ()
+interpretExtra (GameAction {..}) = do
+  case gameResize of
+    Nothing -> return ()
+    Just (V2 width height) -> setViewportSize width height
 
 drawFrame :: MonadCube m => GameWindow -> GameState -> m ()
 drawFrame (GameWindow {..}) (GameState {..}) = do
@@ -124,14 +146,28 @@ drawFrame (GameWindow {..}) (GameState {..}) = do
   glSwapWindow gameWindow
   runPendingFinalizers
 
-gameNetwork :: forall t m. (Reflex t, MonadHold t m, MonadCube m) => GameWindow -> GameState -> Event t CubeTickInfo -> Event t SDL.EventPayload -> m (CubeNetwork t GameState)
-gameNetwork (GameWindow { gameSettings = GameSettings {..}, ..}) initialState _tickEvent sdlEvent = mdo
-  let stateUpdateEvent = flip push sdlEvent $ \case
-        WindowSizeChangedEvent (WindowSizeChangedEventData { windowSizeChangedEventSize = V2 width height }) -> do
-          state@(GameState {..}) <- sample frameBehavior
-          return $ Just state { stateScreen = perspectiveScreen gameFovRadians (fromIntegral width / fromIntegral height) gameNearPlane gameFarPlane }
+gameNetwork :: forall t m. (Reflex t, MonadHold t m, MonadCube m, MonadSubscribeEvent t m) => GameWindow -> GameInitialState -> Event t CubeTickInfo -> Event t SDL.EventPayload -> m (GameExtra t, EventLoopNetwork t GameState)
+gameNetwork (GameWindow { gameSettings = GameSettings {..}, ..}) (GameInitialState {..}) _tickEvent sdlEvent = mdo
+  let resizeEvent = flip push sdlEvent $ \case
+        WindowSizeChangedEvent (WindowSizeChangedEventData { windowSizeChangedEventSize = sz }) -> return $ Just (fromIntegral <$> sz)
         _ -> return Nothing
-  frameBehavior <- hold initialState stateUpdateEvent
-  return CubeNetwork { quitEvent = never
-                     , ..
-                     }
+  let quitEvent = flip push sdlEvent $ \case
+        QuitEvent -> return $ Just ()
+        _ -> return Nothing
+  windowSize <- hold (V2 (fromIntegral gameInitialWidth) (fromIntegral gameInitialHeight)) resizeEvent
+
+  let screen = fmap (\(V2 width height) -> perspectiveScreen gameFovRadians (fromIntegral width / fromIntegral height) gameNearPlane gameFarPlane) windowSize
+      camera = constant mempty
+      nodes = constant initialNodes
+
+      frameBehavior = GameState <$> camera <*> screen <*> nodes
+
+      network = EventLoopNetwork { eloopQuitEvent = quitEvent
+                                 , eloopFrameBehavior = frameBehavior
+                                 }
+
+  gameResizeHandle <- subscribeEvent resizeEvent
+  let extra = GameExtra { gameResizeHandle
+                        }
+
+  return (extra, network)

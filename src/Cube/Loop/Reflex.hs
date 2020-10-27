@@ -1,4 +1,4 @@
--- | Bindings for Reflex.
+-- | Bindings for Reflex, providing a complete event loop. Builts atop `Cube.Loop.Stable`.
 
 {-# LANGUAGE StrictData #-}
 
@@ -8,7 +8,7 @@ module Cube.Loop.Reflex
   , reflexSDLEvent
   , newReflexEventLoop
   , stepWithReflexEvents
-  , CubeNetwork(..)
+  , EventLoopNetwork(..)
   , EventLoopApp(..)
   , runInEventLoop
   ) where
@@ -25,7 +25,7 @@ import Reflex
 import Reflex.Host.Class
 
 import Reflex.Logger ()
-import Reflex.Spider.Catch ()
+import Reflex.Catch ()
 import Control.Monad.Ref.Logger ()
 import Cube.Types
 import Cube.Loop.Stable
@@ -52,42 +52,53 @@ fireEventRefAndRead' mtRef input readPhase = do
     Nothing -> return Nothing -- Since we aren't firing the input, the output can't fire
     Just trigger -> fireEventsAndRead [trigger :=> Identity input] (Just <$> readPhase)
 
-stepWithReflexEvents :: (MonadReflexHost t m, MonadIO m, MonadRef m, Ref m ~ Ref IO) => ReflexEventLoop t -> ReadPhase m Bool -> SDL.Timestamp -> TimeInterval -> m Bool
-stepWithReflexEvents (ReflexEventLoop {..}) readPhase = stepWithEvents reflexEventLoop hooks
-  where hooks = EventLoopHooks { loopTickEvent = \i -> fromMaybe True <$> fireEventRefAndRead' reflexTickRef i readPhase
-                               , loopSDLEvent = \i -> fromMaybe True <$> fireEventRefAndRead' reflexSDLRef i readPhase
+stepWithReflexEvents :: forall t m res. (MonadReflexHost t m, MonadIO m, MonadRef m, Ref m ~ Ref IO) => ReflexEventLoop t -> ReadPhase m res -> (res -> m Bool) -> SDL.Timestamp -> TimeInterval -> m Bool
+stepWithReflexEvents (ReflexEventLoop {..}) readPhase interpretPhase = stepWithEvents reflexEventLoop hooks
+  where hooks = EventLoopHooks { loopTickEvent = runEvent reflexTickRef
+                               , loopSDLEvent = runEvent reflexSDLRef
                                }
+        runEvent :: Ref m (Maybe (EventTrigger t e)) -> e -> m Bool
+        runEvent ref event = do
+          r <- fireEventRefAndRead' ref event readPhase
+          fromMaybe True <$> mapM interpretPhase r
 
-data CubeNetwork t a = CubeNetwork { frameBehavior :: Behavior t a
-                                   , quitEvent :: Event t ()
-                                   }
+data EventLoopNetwork t frame = EventLoopNetwork { eloopFrameBehavior :: Behavior t frame
+                                                 , eloopQuitEvent :: Event t ()
+                                                 }
 
-data EventLoopApp a = EventLoopApp { appNetworkSetup :: forall t m. (Reflex t, MonadHold t m, MonadSample t m, MonadCube m) => Event t CubeTickInfo -> Event t SDL.EventPayload -> m (CubeNetwork t a)
-                                   , appDrawFrame :: forall m. (MonadCube m) => a -> m ()
-                                   , appFrameInterval :: TimeInterval
-                                   , appWorldInterval :: TimeInterval
-                                   }
+data EventLoopApp frame extra action =
+  EventLoopApp { eappNetworkSetup :: forall t m. (Reflex t, MonadHold t m, MonadSample t m, MonadCube m, MonadSubscribeEvent t m) => Event t CubeTickInfo -> Event t SDL.EventPayload -> m (extra t, EventLoopNetwork t frame)
+               , eappDrawFrame :: forall t m. (MonadCube m) => extra t -> frame -> m ()
+               , eappReadAction :: forall t m. (MonadReadEvent t m) => extra t -> m action
+               , eappInterpretAction :: forall m. (MonadCube m) => action -> m ()
+               , eappFrameInterval :: TimeInterval
+               , eappWorldInterval :: TimeInterval
+               }
 
-runInEventLoop :: forall m a. MonadCube m => EventLoopApp a -> m ()
+runInEventLoop :: MonadCube m => EventLoopApp frame action actionResult -> m ()
 runInEventLoop (EventLoopApp {..}) = do
   logger <- askLoggerIO
   liftIO $ runSpiderHost $ do
     (initialTicks, fpsLimit) <- newFPSLimit
     eventLoop <- newReflexEventLoop initialTicks
-    CubeNetwork {..} <- runHostFrame $ flip runLoggingT logger $ appNetworkSetup (reflexTickEvent eventLoop) (reflexSDLEvent eventLoop)
-    quitHandle <- subscribeEvent quitEvent
+    (extraInfo, EventLoopNetwork {..}) <- runHostFrame $ flip runLoggingT logger $ eappNetworkSetup (reflexTickEvent eventLoop) (reflexSDLEvent eventLoop)
+    quitHandle <- subscribeEvent eloopQuitEvent
 
     let go currentTime = do
-          let readQuit = do
-                shouldQuit <- readEvent quitHandle
-                return $ isNothing shouldQuit
-          r <- stepWithReflexEvents eventLoop readQuit currentTime appWorldInterval
+          let myReadPhase = do
+                action <- eappReadAction extraInfo
+                quitHappened <- readEvent quitHandle
+                return (action, isNothing quitHappened)
+          let myInterpretPhase (action, continue) = do
+                eappInterpretAction action
+                return continue
+          r <- stepWithReflexEvents eventLoop myReadPhase myInterpretPhase currentTime eappWorldInterval
           if not r then
             return ()
           else do
-            state <- sample frameBehavior
-            flip runLoggingT logger $ appDrawFrame state
-            (newTime, _elapsed) <- fpsDelay fpsLimit appFrameInterval
+            state <- sample eloopFrameBehavior
+            eappDrawFrame extraInfo state
+            (newTime, _elapsed) <- fpsDelay fpsLimit eappFrameInterval
             go newTime
 
-    go initialTicks
+    flip runLoggingT logger $ go initialTicks

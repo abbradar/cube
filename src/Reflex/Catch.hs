@@ -2,7 +2,7 @@
 
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
-module Reflex.Spider.Catch where
+module Reflex.Catch where
 
 import Control.Monad.Catch
 import Reflex.Spider.Internal

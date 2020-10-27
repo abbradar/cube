@@ -67,10 +67,10 @@ stepWithEvents  (EventLoop {..}) (EventLoopHooks {..}) currentTime stepInterval 
         performSteps state (SDL.Event {..}) = do
           newOffset <- fireTicks (stateLastStepOffset state) elapsed
           r <- lift $ loopSDLEvent eventPayload
-          case eventPayload of
-            _ | not r -> mzero
-            SDL.QuitEvent -> mzero
-            _ -> return $ state { stateLastTime = eventTimestamp, stateLastStepOffset = newOffset }
+          if not r then
+            mzero
+          else
+            return $ state { stateLastTime = eventTimestamp, stateLastStepOffset = newOffset }
           where rawElapsed = fromIntegral eventTimestamp - fromIntegral (stateLastTime state) :: Int32
                 elapsed
                   | rawElapsed > 0 = rawElapsed

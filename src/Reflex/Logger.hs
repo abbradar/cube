@@ -38,4 +38,4 @@ instance MonadHold t m => MonadHold t (LoggingT m) where
   headE ev = lift $ headE ev
 
 instance MonadFix m => MonadFix (LoggingT m) where
-    mfix f = LoggingT $ \r -> mfix $ \a -> runLoggingT (f a) r
+  mfix f = LoggingT $ \r -> mfix $ \a -> runLoggingT (f a) r
