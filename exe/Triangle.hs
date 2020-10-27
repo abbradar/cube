@@ -42,6 +42,7 @@ instance FromJSON GameSettings where
 -- Immutable values for the whole duration of running.
 data GameWindow = GameWindow { gameWindow :: SDL.Window
                              , gameFovRadians :: Float
+                             , gameSettings :: GameSettings
                              }
 
 data GameState = GameState { stateCamera :: CameraF
@@ -96,6 +97,7 @@ main = do
                                    }
           gameWindow = GameWindow { gameWindow = window
                                   , gameFovRadians = fov
+                                  , gameSettings = settings
                                   }
           gameApp :: EventLoopApp GameState
           gameApp = EventLoopApp { appNetworkSetup = gameNetwork gameWindow initialState
@@ -122,16 +124,14 @@ drawFrame (GameWindow {..}) (GameState {..}) = do
   glSwapWindow gameWindow
   runPendingFinalizers
 
-gameNetwork :: (Reflex t, MonadCube m) => GameWindow -> GameState -> Event t CubeTickInfo -> Event t SDL.EventPayload -> m (Behavior t (Maybe GameState))
-gameNetwork (GameWindow {..}) initialState tickEvent sdlEvent = return $ constant $ Just initialState
-
-
-{- processEvent :: GameState -> SDL.Event -> Maybe GameState
-processEvent state@(GameState {..}) event =
-  case eventPayload event of
-    WindowSizeChangedEvent (WindowSizeChangedEventData { windowSizeChangedEventSize = V2 width height }) ->
-      Just state { stateScreen = perspectiveScreen stateFovRadians (fromIntegral width / fromIntegral height) (gameNearPlane stateSettings) (gameFarPlane stateSettings) }
-    WindowClosedEvent _ -> Nothing
-    QuitEvent -> Nothing
-    _ -> Just state
--}
+gameNetwork :: forall t m. (Reflex t, MonadHold t m, MonadCube m) => GameWindow -> GameState -> Event t CubeTickInfo -> Event t SDL.EventPayload -> m (CubeNetwork t GameState)
+gameNetwork (GameWindow { gameSettings = GameSettings {..}, ..}) initialState _tickEvent sdlEvent = mdo
+  let stateUpdateEvent = flip push sdlEvent $ \case
+        WindowSizeChangedEvent (WindowSizeChangedEventData { windowSizeChangedEventSize = V2 width height }) -> do
+          state@(GameState {..}) <- sample frameBehavior
+          return $ Just state { stateScreen = perspectiveScreen gameFovRadians (fromIntegral width / fromIntegral height) gameNearPlane gameFarPlane }
+        _ -> return Nothing
+  frameBehavior <- hold initialState stateUpdateEvent
+  return CubeNetwork { quitEvent = never
+                     , ..
+                     }

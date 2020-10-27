@@ -40,7 +40,7 @@ library
       Reflex.Spider.Catch
   other-modules:
       Paths_cube
-  default-extensions: ApplicativeDo BangPatterns OverloadedStrings TupleSections ScopedTypeVariables TemplateHaskell QuasiQuotes NamedFieldPuns RecordWildCards StandaloneDeriving MultiWayIf DeriveGeneric DeriveAnyClass KindSignatures TypeApplications DataKinds GeneralizedNewtypeDeriving RankNTypes TypeFamilies ConstraintKinds LambdaCase DefaultSignatures TypeOperators FlexibleContexts FlexibleInstances ViewPatterns DerivingStrategies MultiParamTypeClasses
+  default-extensions: ApplicativeDo BangPatterns OverloadedStrings TupleSections ScopedTypeVariables TemplateHaskell QuasiQuotes NamedFieldPuns RecordWildCards StandaloneDeriving MultiWayIf DeriveGeneric DeriveAnyClass KindSignatures TypeApplications DataKinds GeneralizedNewtypeDeriving RankNTypes TypeFamilies ConstraintKinds LambdaCase DefaultSignatures TypeOperators FlexibleContexts FlexibleInstances ViewPatterns DerivingStrategies MultiParamTypeClasses RecursiveDo
   build-depends:
       JuicyPixels
     , aeson
@@ -54,6 +54,7 @@ library
     , bytestring-to-vector
     , caramia
     , containers
+    , dependent-sum
     , directory
     , exceptions
     , filepath
@@ -84,7 +85,7 @@ executable triangle
       Paths_cube
   hs-source-dirs:
       exe
-  default-extensions: ApplicativeDo BangPatterns OverloadedStrings TupleSections ScopedTypeVariables TemplateHaskell QuasiQuotes NamedFieldPuns RecordWildCards StandaloneDeriving MultiWayIf DeriveGeneric DeriveAnyClass KindSignatures TypeApplications DataKinds GeneralizedNewtypeDeriving RankNTypes TypeFamilies ConstraintKinds LambdaCase DefaultSignatures TypeOperators FlexibleContexts FlexibleInstances ViewPatterns DerivingStrategies MultiParamTypeClasses
+  default-extensions: ApplicativeDo BangPatterns OverloadedStrings TupleSections ScopedTypeVariables TemplateHaskell QuasiQuotes NamedFieldPuns RecordWildCards StandaloneDeriving MultiWayIf DeriveGeneric DeriveAnyClass KindSignatures TypeApplications DataKinds GeneralizedNewtypeDeriving RankNTypes TypeFamilies ConstraintKinds LambdaCase DefaultSignatures TypeOperators FlexibleContexts FlexibleInstances ViewPatterns DerivingStrategies MultiParamTypeClasses RecursiveDo
   build-depends:
       JuicyPixels
     , aeson
@@ -99,6 +100,7 @@ executable triangle
     , caramia
     , containers
     , cube
+    , dependent-sum
     , directory
     , exceptions
     , filepath
