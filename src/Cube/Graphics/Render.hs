@@ -70,16 +70,16 @@ drawPreparedPipelinesGeneric setFirstPipeline (Screen {..}) camera = foldM_ draw
           when doSetPipeline $ setPipeline preparedPipeline
           case pipelineViewProjectionMatrix preparedMeta of
             Nothing -> return ()
-            Just idx -> setUniform viewProjectionMatrix idx preparedPipeline
+            Just idx -> setUniform (transpose viewProjectionMatrix) idx preparedPipeline
 
           forM_ preparedMeshes $ \(PreparedMesh {..}) -> do
-            let normalMatrix = transpose $ inv44 (viewMatrix !*! preparedModelMatrix)
+            let normalMatrix = inv44 (viewMatrix !*! preparedModelMatrix)
             case pipelineModelMatrix preparedMeta of
               Nothing -> return ()
-              Just idx -> setUniform preparedModelMatrix idx preparedPipeline
+              Just idx -> setUniform (transpose preparedModelMatrix) idx preparedPipeline
             case pipelineNormalMatrix preparedMeta of
               Nothing -> return ()
-              Just idx -> setUniform normalMatrix idx preparedPipeline
+              Just idx -> setUniform (transpose normalMatrix) idx preparedPipeline
             mapM_ drawR preparedDrawCommands
 
           return False

@@ -20,6 +20,7 @@ import Cube.Loop.Stable
 import Cube.Loop.Reflex
 import Cube.Graphics.Types
 import Cube.Graphics.Screen
+import Cube.Graphics.Camera
 import Cube.Graphics.Resources
 import Cube.Graphics.Render
 
@@ -157,7 +158,7 @@ gameNetwork (GameWindow { gameSettings = GameSettings {..}, ..}) (GameInitialSta
   windowSize <- hold (V2 (fromIntegral gameInitialWidth) (fromIntegral gameInitialHeight)) resizeEvent
 
   let screen = fmap (\(V2 width height) -> perspectiveScreen gameFovRadians (fromIntegral width / fromIntegral height) gameNearPlane gameFarPlane) windowSize
-      camera = constant mempty
+      camera = constant $ cameraFromEyeTarget (V3 (-15) (-10) (-15)) (V3 (-5) (-5) (-5))
       nodes = constant initialNodes
 
       frameBehavior = GameState <$> camera <*> screen <*> nodes

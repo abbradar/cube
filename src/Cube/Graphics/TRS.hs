@@ -2,6 +2,7 @@
 
 module Cube.Graphics.TRS
   ( TRS(..)
+  , matrixToQuaternion
   , matrixToTRS
   , trsToMatrix
   ) where
@@ -32,7 +33,7 @@ matrixToQuaternion :: (Ord a, Floating a) => M33 a -> Quaternion a
 matrixToQuaternion (V3 (V3 m00 m01 m02)
                        (V3 m10 m11 m12)
                        (V3 m20 m21 m22)) =
-  (0.5 * sqrt rt) *^ rq
+  (0.5 / sqrt rt) *^ rq
   where (rt, rq)
           | m22 < 0 =
             if m00 > m11 then
