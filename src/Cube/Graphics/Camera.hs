@@ -17,7 +17,7 @@ defaultUp = V3 0 0 1
 data Camera a = Camera { cameraPosition :: V3 a
                        , cameraRotation :: Quaternion a
                        }
-           deriving (Show, Eq)
+              deriving (Show, Eq)
 
 instance RealFloat a => Semigroup (Camera a) where
   a <> b = Camera { cameraPosition = cameraPosition a + cameraPosition b

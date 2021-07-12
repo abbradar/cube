@@ -23,6 +23,7 @@ import Cube.Graphics.Screen
 import Cube.Graphics.Camera
 import Cube.Graphics.Resources
 import Cube.Graphics.Render
+import Cube.Input.Keyboard
 
 data GameSettings = GameSettings { gameVertexShader :: FilePath
                                  , gameFragmentShader :: FilePath
@@ -148,20 +149,26 @@ drawFrame (GameWindow {..}) (GameState {..}) = do
   runPendingFinalizers
 
 gameNetwork :: forall t m. (Reflex t, MonadHold t m, MonadCube m, MonadSubscribeEvent t m) => GameWindow -> GameInitialState -> Event t CubeTickInfo -> Event t SDL.EventPayload -> m (GameExtra t, EventLoopNetwork t GameState)
-gameNetwork (GameWindow { gameSettings = GameSettings {..}, ..}) (GameInitialState {..}) _tickEvent sdlEvent = mdo
+gameNetwork (GameWindow { gameSettings = GameSettings {..}, ..}) (GameInitialState {..}) tickEvent sdlEvent = mdo
   let resizeEvent = flip push sdlEvent $ \case
         WindowSizeChangedEvent (WindowSizeChangedEventData { windowSizeChangedEventSize = sz }) -> return $ Just (fromIntegral <$> sz)
         _ -> return Nothing
   let quitEvent = flip push sdlEvent $ \case
         QuitEvent -> return $ Just ()
         _ -> return Nothing
-  windowSize <- hold (V2 (fromIntegral gameInitialWidth) (fromIntegral gameInitialHeight)) resizeEvent
+  keysPressed <- pressedSDLKeys sdlEvent
+  moveDirection <- keysDirection keysPressed
+  let updateCamera (CubeTickInfo {..}) camera@(Camera {..}) = do
+        dir <- sample $ current moveDirection
+        let distance = fromIntegral ticksElapsed * 0.05
+        return $ camera { cameraPosition = cameraPosition + distance *^ dir }
+  camera <- foldDynM updateCamera mempty tickEvent
+  windowSize <- holdDyn (V2 (fromIntegral gameInitialWidth) (fromIntegral gameInitialHeight)) resizeEvent
 
   let screen = fmap (\(V2 width height) -> perspectiveScreen gameFovRadians (fromIntegral width / fromIntegral height) gameNearPlane gameFarPlane) windowSize
-      camera = constant $ cameraFromEyeTarget (V3 (-15) (-10) (-15)) (V3 (-5) (-5) (-5))
       nodes = constant initialNodes
 
-      frameBehavior = GameState <$> camera <*> screen <*> nodes
+      frameBehavior = GameState <$> current camera <*> current screen <*> nodes
 
       network = EventLoopNetwork { eloopQuitEvent = quitEvent
                                  , eloopFrameBehavior = frameBehavior

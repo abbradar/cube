@@ -1,6 +1,6 @@
 cabal-version: 1.12
 
--- This file has been generated from package.yaml by hpack version 0.34.2.
+-- This file has been generated from package.yaml by hpack version 0.34.4.
 --
 -- see: https://github.com/sol/hpack
 
@@ -22,6 +22,7 @@ library
       Cube.Graphics.ShadersCache
       Cube.Graphics.TRS
       Cube.Graphics.Types
+      Cube.Input.Keyboard
       Cube.Loop.Reflex
       Cube.Loop.Stable
       Cube.Types
@@ -40,7 +41,36 @@ library
       Reflex.Logger
   other-modules:
       Paths_cube
-  default-extensions: ApplicativeDo BangPatterns OverloadedStrings TupleSections ScopedTypeVariables TemplateHaskell QuasiQuotes NamedFieldPuns RecordWildCards StandaloneDeriving MultiWayIf DeriveGeneric DeriveAnyClass KindSignatures TypeApplications DataKinds GeneralizedNewtypeDeriving RankNTypes TypeFamilies ConstraintKinds LambdaCase DefaultSignatures TypeOperators FlexibleContexts FlexibleInstances ViewPatterns DerivingStrategies MultiParamTypeClasses RecursiveDo
+  default-extensions:
+      ApplicativeDo
+      BangPatterns
+      OverloadedStrings
+      TupleSections
+      ScopedTypeVariables
+      TemplateHaskell
+      QuasiQuotes
+      NamedFieldPuns
+      RecordWildCards
+      StandaloneDeriving
+      MultiWayIf
+      DeriveGeneric
+      DeriveAnyClass
+      KindSignatures
+      TypeApplications
+      DataKinds
+      GeneralizedNewtypeDeriving
+      RankNTypes
+      TypeFamilies
+      ConstraintKinds
+      LambdaCase
+      DefaultSignatures
+      TypeOperators
+      FlexibleContexts
+      FlexibleInstances
+      ViewPatterns
+      DerivingStrategies
+      MultiParamTypeClasses
+      RecursiveDo
   build-depends:
       JuicyPixels
     , aeson
@@ -85,7 +115,36 @@ executable triangle
       Paths_cube
   hs-source-dirs:
       exe
-  default-extensions: ApplicativeDo BangPatterns OverloadedStrings TupleSections ScopedTypeVariables TemplateHaskell QuasiQuotes NamedFieldPuns RecordWildCards StandaloneDeriving MultiWayIf DeriveGeneric DeriveAnyClass KindSignatures TypeApplications DataKinds GeneralizedNewtypeDeriving RankNTypes TypeFamilies ConstraintKinds LambdaCase DefaultSignatures TypeOperators FlexibleContexts FlexibleInstances ViewPatterns DerivingStrategies MultiParamTypeClasses RecursiveDo
+  default-extensions:
+      ApplicativeDo
+      BangPatterns
+      OverloadedStrings
+      TupleSections
+      ScopedTypeVariables
+      TemplateHaskell
+      QuasiQuotes
+      NamedFieldPuns
+      RecordWildCards
+      StandaloneDeriving
+      MultiWayIf
+      DeriveGeneric
+      DeriveAnyClass
+      KindSignatures
+      TypeApplications
+      DataKinds
+      GeneralizedNewtypeDeriving
+      RankNTypes
+      TypeFamilies
+      ConstraintKinds
+      LambdaCase
+      DefaultSignatures
+      TypeOperators
+      FlexibleContexts
+      FlexibleInstances
+      ViewPatterns
+      DerivingStrategies
+      MultiParamTypeClasses
+      RecursiveDo
   build-depends:
       JuicyPixels
     , aeson
