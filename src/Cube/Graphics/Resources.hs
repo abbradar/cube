@@ -168,7 +168,7 @@ loadPrimitive plCache materials accessors primitive@(TF.Primitive {..})
                                                 , indexType = indicesType
                                                 }
                 return (TF.accessorCount preparedAccessor, src)
-      let TF.Material {..} = maybe TF.defaultMaterial (materials V.!) primitiveMaterial
+      let TF.Material {} = maybe TF.defaultMaterial (materials V.!) primitiveMaterial
           lprimDrawCommand = drawCommand { primitiveType =
                                              case fromMaybe TF.Triangles primitiveMode of
                                                TF.Points -> Points
