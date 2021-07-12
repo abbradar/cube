@@ -163,7 +163,7 @@ preprocessOneShader topLevel path = do
               Right EmptyLine -> return $ TLB.singleton '\n' <> srcLines
               Right (DirectiveLine (IncludeDirective (IncludeInfo {..}))) -> do
                 included <- preprocessOneShader False (relativePath </> includePath)
-                let lineDirective = [i|\n#line #{lineNum + 1} #{newId}\n|]
+                let lineDirective = [i|\n\#line #{lineNum + 1} #{newId}\n|]
                 return $ included <> lineDirective <> srcLines
               Right (DirectiveLine (VersionDirective _verInfo)) | topLevel, Nothing <- encVersion -> do
                 put srcs { encVersion = Just line }
@@ -175,7 +175,7 @@ preprocessOneShader topLevel path = do
 
       contents <- liftIO $ T.readFile path'
       fileLines <- foldrM buildOutput mempty $ zip [1..] $ T.lines contents
-      let initialLine = [i|#line 1 #{newId}\n|]
+      let initialLine = [i|\#line 1 #{newId}\n|]
           ret = initialLine <> fileLines
       modify (\x -> x { encSources = M.insert path' (Just (newId, ret)) $ encSources x })
       return ret
@@ -203,8 +203,8 @@ type MacroDefinition = ByteString
 
 shaderSource :: [(MacroName, Maybe MacroDefinition)] -> ShaderWithIncludes -> ByteString
 shaderSource defns (ShaderWithIncludes {..}) = BL.toStrict $ BB.toLazyByteString sourceFull
-  where addDefinition (name, Nothing) = ([i|#define #{name}\n|] <>)
-        addDefinition (name, Just value) = ([i|#define #{name} #{value}\n|] <>)
+  where addDefinition (name, Nothing) = ([i|\#define #{name}\n|] <>)
+        addDefinition (name, Just value) = ([i|\#define #{name} #{value}\n|] <>)
 
         sourceBody = foldr addDefinition (BB.byteString shaderSources) defns
         sourceFull = BB.byteString shaderPreamble <> sourceBody
