@@ -17,6 +17,9 @@ import qualified Data.Map.Strict as M
 import Reflex
 import qualified SDL
 
+import Reflex.Combinators
+import Cube.Utils
+import Cube.Time
 import Cube.Loop.Stable
 
 data InputEvent = InputEvent { inputPressedNow :: Bool
@@ -29,21 +32,15 @@ type AccumulatedInput k = Map k [InputEvent]
 -- The first field is time since the key has been pressed now.
 type InputAccumulator k = Map k (Maybe SDL.Timestamp, [InputEvent])
 
-sumMaybeWith :: (a -> a -> a) -> Maybe a -> Maybe a -> Maybe a
-sumMaybeWith f (Just a) (Just b) = Just (f a b)
-sumMaybeWith _ ma mb = ma <|> mb
-
-accumulateInput :: forall k t m. (Show k, Ord k, Reflex t, MonadFix m, MonadHold t m) => Event t CubeTickInfo -> Event t (CubeTickInfo, (k, Bool)) -> m (Event t (AccumulatedInput k))
-accumulateInput tickEvent inputEvent = do
-  integratedDyn <- foldDyn processEvent (M.empty, Nothing) $ mergeWith doMerge [tickEvent', inputEvent']
-  return $ mapMaybe snd (updated integratedDyn)
+accumulateInput :: forall k t m. (Ord k, Reflex t, MonadFix m, MonadHold t m) => Event t CubeTickInfo -> Event t (CubeTickInfo, (k, Bool)) -> m (Event t (AccumulatedInput k))
+accumulateInput tickEvent inputEvent = foldPullEvent processEvent M.empty $ mergeWith doMerge [tickEvent', inputEvent']
 
   where tickEvent' = fmap (\tick -> (tick, Nothing, True)) tickEvent
         inputEvent' = fmap (\(tick, payload) -> (tick, Just payload, False)) inputEvent
         doMerge = (\(_tick, payloadA, tickedA) (tick, payloadB, tickedB) -> (tick, payloadA <|> payloadB, tickedA || tickedB))
 
-        processEvent :: (CubeTickInfo, Maybe (k, Bool), Bool) -> (InputAccumulator k, Maybe (AccumulatedInput k)) -> (InputAccumulator k, Maybe (AccumulatedInput k))
-        processEvent (CubeTickInfo {..}, mevent, isTicked) (accumulator, _) = (nextAccumulator, integratedEvent)
+        processEvent :: (CubeTickInfo, Maybe (k, Bool), Bool) -> InputAccumulator k -> (InputAccumulator k, Maybe (AccumulatedInput k))
+        processEvent (CubeTickInfo {..}, mevent, isTicked) accumulator = (nextAccumulator, integratedEvent)
           where accumulator' =
                   case mevent of
                     Just (inputKey, isPressed) ->

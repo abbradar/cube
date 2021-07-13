@@ -3,13 +3,7 @@
 {-# LANGUAGE StrictData #-}
 
 module Cube.Loop.Stable
-  ( TicksElapsed
-  , TimeInterval
-  , isEarlier
-  , isLater
-  , earlier
-  , later
-  , EventLoop
+  ( EventLoop
   , CubeTickInfo(..)
   , newEventLoop
   , EventLoopHooks(..)
@@ -26,24 +20,7 @@ import Data.Int
 import Data.Word
 import qualified SDL
 
-type TimeInterval = Word32
-type TicksElapsed = TimeInterval
-
-isEarlier :: SDL.Timestamp -> SDL.Timestamp -> Bool
-a `isEarlier` b = diff >= 0
-  where diff :: Int32
-        diff = fromIntegral b - fromIntegral a
-
-isLater :: SDL.Timestamp -> SDL.Timestamp -> Bool
-a `isLater` b = diff >= 0
-  where diff :: Int32
-        diff = fromIntegral a - fromIntegral b
-
-earlier :: SDL.Timestamp -> SDL.Timestamp -> SDL.Timestamp
-earlier a b = if a `isEarlier` b then a else b
-
-later :: SDL.Timestamp -> SDL.Timestamp -> SDL.Timestamp
-later a b = if a `isLater` b then a else b
+import Cube.Time
 
 data EventLoopState = EventLoopState { lastStepTime :: SDL.Timestamp
                                      , lastEventTime :: SDL.Timestamp

@@ -14,6 +14,7 @@ build-type:          Simple
 library
   exposed-modules:
       Control.Monad.Ref.Logger
+      Cube.Geometry
       Cube.Graphics.Camera
       Cube.Graphics.Framerate
       Cube.Graphics.Render
@@ -26,7 +27,9 @@ library
       Cube.Input.Keyboard
       Cube.Loop.Reflex
       Cube.Loop.Stable
+      Cube.Time
       Cube.Types
+      Cube.Utils
       Data.Aeson.Utils
       Data.GLSL.Preprocessor
       Data.GlTF.Accessors
@@ -39,6 +42,7 @@ library
       Foreign.Storable.Generic
       Linear.Aeson
       Reflex.Catch
+      Reflex.Combinators
       Reflex.Logger
   other-modules:
       Paths_cube

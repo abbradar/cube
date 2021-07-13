@@ -28,6 +28,7 @@ import Reflex.Logger ()
 import Reflex.Catch ()
 import Control.Monad.Ref.Logger ()
 import Cube.Types
+import Cube.Time
 import Cube.Loop.Stable
 import Cube.Graphics.Framerate
 
