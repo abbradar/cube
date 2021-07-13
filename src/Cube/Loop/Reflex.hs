@@ -39,7 +39,7 @@ data ReflexEventLoop t = ReflexEventLoop { reflexEventLoop :: EventLoop
                                          , reflexSDLRef :: IORef (Maybe (EventTrigger t (CubeTickInfo, SDL.EventPayload)))
                                          }
 
-newReflexEventLoop :: (MonadReflexCreateTrigger t m, MonadIO m, MonadRef m, Ref m ~ Ref IO) => SDL.Timestamp -> m (ReflexEventLoop t)
+newReflexEventLoop :: (MonadReflexCreateTrigger t m, MonadIO m, MonadRef m, Ref m ~ Ref IO) => Timestamp -> m (ReflexEventLoop t)
 newReflexEventLoop lastTime = do
   (reflexTickEvent, reflexTickRef) <- newEventWithTriggerRef
   (reflexSDLEvent, reflexSDLRef) <- newEventWithTriggerRef
@@ -53,7 +53,7 @@ fireEventRefAndRead' mtRef input readPhase = do
     Nothing -> return Nothing -- Since we aren't firing the input, the output can't fire
     Just trigger -> fireEventsAndRead [trigger :=> Identity input] (Just <$> readPhase)
 
-stepWithReflexEvents :: forall t m res. (MonadReflexHost t m, MonadIO m, MonadRef m, Ref m ~ Ref IO) => ReflexEventLoop t -> ReadPhase m res -> (res -> m Bool) -> SDL.Timestamp -> TimeInterval -> m Bool
+stepWithReflexEvents :: forall t m res. (MonadReflexHost t m, MonadIO m, MonadRef m, Ref m ~ Ref IO) => ReflexEventLoop t -> ReadPhase m res -> (res -> m Bool) -> Timestamp -> TimeInterval -> m Bool
 stepWithReflexEvents (ReflexEventLoop {..}) readPhase interpretPhase = stepWithEvents reflexEventLoop hooks
   where hooks = EventLoopHooks { loopTickEvent = runEvent reflexTickRef
                                , loopSDLEvent = curry $ runEvent reflexSDLRef

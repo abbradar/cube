@@ -15,7 +15,6 @@ import Control.Monad.Fix
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as M
 import Reflex
-import qualified SDL
 
 import Reflex.Combinators
 import Cube.Utils
@@ -30,7 +29,7 @@ data InputEvent = InputEvent { inputPressedNow :: Bool
 type AccumulatedInput k = Map k [InputEvent]
 
 -- The first field is time since the key has been pressed now.
-type InputAccumulator k = Map k (Maybe SDL.Timestamp, [InputEvent])
+type InputAccumulator k = Map k (Maybe Timestamp, [InputEvent])
 
 accumulateInput :: forall k t m. (Ord k, Reflex t, MonadFix m, MonadHold t m) => Event t CubeTickInfo -> Event t (CubeTickInfo, (k, Bool)) -> m (Event t (AccumulatedInput k))
 accumulateInput tickEvent inputEvent = foldPullEvent processEvent M.empty $ mergeWith doMerge [tickEvent', inputEvent']

@@ -20,8 +20,8 @@ import qualified SDL
 
 import Cube.Time
 
-data EventLoopState = EventLoopState { lastStepTime :: SDL.Timestamp
-                                     , lastEventTime :: SDL.Timestamp
+data EventLoopState = EventLoopState { lastStepTime :: Timestamp
+                                     , lastEventTime :: Timestamp
                                      }
                     deriving (Show, Eq)
 
@@ -29,11 +29,11 @@ data EventLoop = EventLoop { loopLastState :: IORef (Maybe EventLoopState)
                            }
 
 data CubeTickInfo = CubeTickInfo { ticksElapsed :: TicksElapsed
-                                 , currentTime :: SDL.Timestamp
+                                 , currentTime :: Timestamp
                                  }
                      deriving (Show, Eq)
 
-newEventLoop :: MonadIO m => SDL.Timestamp -> m EventLoop
+newEventLoop :: MonadIO m => Timestamp -> m EventLoop
 newEventLoop lastTime = do
   let state = EventLoopState { lastStepTime = lastTime
                              , lastEventTime = lastTime
@@ -45,7 +45,7 @@ data EventLoopHooks m = EventLoopHooks { loopTickEvent :: CubeTickInfo -> m Bool
                                        , loopSDLEvent :: CubeTickInfo -> SDL.EventPayload -> m Bool
                                        }
 
-stepWithEvents :: forall m. MonadIO m => EventLoop -> EventLoopHooks m -> SDL.Timestamp -> TimeInterval -> m Bool
+stepWithEvents :: forall m. MonadIO m => EventLoop -> EventLoopHooks m -> Timestamp -> TimeInterval -> m Bool
 stepWithEvents  (EventLoop {..}) (EventLoopHooks {..}) currentTime stepInterval = do
   mstate <- liftIO $ readIORef loopLastState
   case mstate of
@@ -73,7 +73,7 @@ stepWithEvents  (EventLoop {..}) (EventLoopHooks {..}) currentTime stepInterval 
           guard r
           return $ state' { lastEventTime = eventTimestamp' }
 
-        performSteps :: EventLoopState -> SDL.Timestamp -> MaybeT m EventLoopState
+        performSteps :: EventLoopState -> Timestamp -> MaybeT m EventLoopState
         performSteps state eventTime
           | eventTime - lastStepTime state < stepInterval = return state
           | otherwise = do
