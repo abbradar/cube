@@ -11,21 +11,22 @@ import Data.Int
 import Data.Word
 import Control.Concurrent (threadDelay)
 import Data.IORef
-
 import qualified SDL
+
+import Cube.Time
 
 -- | FPS limiter using SDL timer.
 newtype FPSLimit = FPSLimit (IORef Word32)
 
 -- | Create initial 'FPSLimit'.
-newFPSLimit :: MonadIO m => m (SDL.Timestamp, FPSLimit)
+newFPSLimit :: MonadIO m => m (Timestamp, FPSLimit)
 newFPSLimit = liftIO $ do
   t0 <- SDL.ticks
   r <- FPSLimit <$> newIORef t0
   return (t0, r)
 
 -- | Given frame time (inverted FPS), delay a thread. Return approximate current time and last frame time.
-fpsDelay :: MonadIO m => FPSLimit -> Word32 -> m (SDL.Timestamp, Word32)
+fpsDelay :: MonadIO m => FPSLimit -> TimeInterval -> m (Timestamp, TimeInterval)
 fpsDelay (FPSLimit st) limit = liftIO $ do
   old <- readIORef st
   curr <- SDL.ticks
