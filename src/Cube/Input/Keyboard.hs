@@ -17,7 +17,7 @@ import Cube.Input.Accumulate
 
 -- This function doesn't check
 pressedKeyPerTick :: (Reflex t, MonadFix m, MonadHold t m) => Keycode -> Event t TimeStep -> KeyboardEventSelector t -> m (Event t TicksElapsed)
-pressedKeyPerTick keycode tickEvent kbEvents = accumulateInput tickEvent (fmap getPressed $ select kbEvents (Const2 keycode))
+pressedKeyPerTick keycode tickEvent kbEvents = accumulatePresses tickEvent (fmap getPressed $ select kbEvents (Const2 keycode))
   where getPressed (tick, info) =
           let isPressed =
                 case keyboardEventKeyMotion info of

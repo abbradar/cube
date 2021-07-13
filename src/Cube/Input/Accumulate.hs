@@ -3,12 +3,14 @@
 {-# LANGUAGE StrictData #-}
 
 module Cube.Input.Accumulate
-  ( accumulateInput
+  ( accumulatePresses
+  , accumulateMovement
   ) where
 
 import Control.Applicative
 import Control.Monad.Fix
 import Reflex
+import Linear
 
 import Reflex.Combinators
 import Cube.Utils
@@ -19,8 +21,8 @@ data AccumulatedInput = AccumulatedInput { inputPressedSince :: Maybe Timestamp
                                          }
                       deriving (Show, Eq)
 
-accumulateInput :: forall t m. (Reflex t, MonadFix m, MonadHold t m) => Event t TimeStep -> Event t (TimeStep,  Bool) -> m (Event t TimeInterval)
-accumulateInput tickEvent inputEvent = foldPullEvent processEvent noInput $ mergeWith doMerge [tickEvent', inputEvent']
+accumulatePresses :: forall t m. (Reflex t, MonadFix m, MonadHold t m) => Event t TimeStep -> Event t (TimeStep,  Bool) -> m (Event t TimeInterval)
+accumulatePresses tickEvent inputEvent = foldPullEvent processEvent noInput $ mergeWith doMerge [tickEvent', inputEvent']
 
   where noInput = AccumulatedInput { inputPressedSince = Nothing
                                    , inputPressedTime = 0
@@ -53,4 +55,25 @@ accumulateInput tickEvent inputEvent = foldPullEvent processEvent noInput $ merg
                 totalTime = inputPressedTime accumulator' + passedTicks accumulator'
                 integratedEvent
                   | isTicked && totalTime > 0 = Just totalTime
+                  | otherwise = Nothing
+
+accumulateMovement :: forall a t m. (Num a, Eq a, Reflex t, MonadFix m, MonadHold t m) => Event t TimeStep -> Event t (V3 a) -> m (Event t (V3 a))
+accumulateMovement tickEvent inputEvent = foldPullEvent processEvent 0 $ mergeWith doMerge [tickEvent', inputEvent']
+
+  where tickEvent' = fmap (const (Nothing, True)) tickEvent
+        inputEvent' = fmap (\movement -> (Just movement, False)) inputEvent
+        doMerge = (\(movedA, tickedA) (movedB, tickedB) -> (movedA <|> movedB, tickedA || tickedB))
+
+        processEvent :: (Maybe (V3 a), Bool) -> V3 a -> (V3 a, Maybe (V3 a))
+        processEvent (mevent, isTicked) accumulator = (nextAccumulator, integratedEvent)
+          where accumulator' =
+                  case mevent of
+                    Just movement -> accumulator + movement
+                    Nothing -> accumulator
+                nextAccumulator
+                  | not isTicked = accumulator'
+                  | otherwise = 0
+
+                integratedEvent
+                  | isTicked && accumulator' /= 0 = Just accumulator'
                   | otherwise = Nothing
