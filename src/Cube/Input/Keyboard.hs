@@ -1,39 +1,42 @@
 -- | Transform from raw SDL events to direction vectors.
 
 module Cube.Input.Keyboard
-  ( PressedKeys(..)
-  , pressedSDLKeys
+  ( pressedSDLKeys
   , moveDirection
-  , keysDirection
   ) where
 
+import Witherable
 import Control.Monad.Fix
 import Linear
-import Data.Set (Set)
-import qualified Data.Set as S
+import qualified Data.Map.Strict as M
 import Reflex
-
 import SDL hiding (Event)
 
-newtype PressedKeys = PressedKeys { pressedKeys :: Set Keycode }
-                    deriving newtype (Show, Eq, Semigroup, Monoid)
+import Cube.Loop.Stable (CubeTickInfo(..))
+import Cube.Input.Accumulate
 
-pressedSDLKeys :: (Reflex t, MonadFix m, MonadHold t m) => Event t EventPayload -> m (Dynamic t PressedKeys)
-pressedSDLKeys = foldDyn process mempty
-  where process (KeyboardEvent (KeyboardEventData { keyboardEventKeyMotion = motion, keyboardEventKeysym = Keysym { keysymKeycode = kc } })) (PressedKeys {..}) =
-          case motion of
-            Pressed -> PressedKeys $ S.insert kc pressedKeys
-            Released -> PressedKeys $ S.delete kc pressedKeys
-        process _ keys = keys
+pressedSDLKeys :: (Reflex t, MonadFix m, MonadHold t m) => Event t CubeTickInfo -> Event t (CubeTickInfo, EventPayload) -> m (Event t (AccumulatedInput Keycode))
+pressedSDLKeys tickEvent sdlEvent = accumulateInput tickEvent (mapMaybe getKeyboardEvent sdlEvent)
+  where getKeyboardEvent (tick, event) =
+          case event of
+            KeyboardEvent (KeyboardEventData { keyboardEventKeyMotion = motion, keyboardEventKeysym = Keysym { keysymKeycode = kc } }) ->
+              let isPressed =
+                    case motion of
+                      Pressed -> True
+                      Released -> False
+              in Just (tick, (kc, isPressed))
+            _ -> Nothing
 
-moveDirection :: (Epsilon a, Floating a) => PressedKeys -> V3 a
-moveDirection (PressedKeys {..}) = normalize $ forward + back + left + right + up + down
-  where forward = if S.member KeycodeW pressedKeys then V3 1 0 0 else 0
-        back = if S.member KeycodeS pressedKeys then V3 (-1) 0 0 else 0
-        left = if S.member KeycodeA pressedKeys then V3 0 (-1) 0 else 0
-        right = if S.member KeycodeD pressedKeys then V3 0 1 0 else 0
-        up = if S.member KeycodeSpace pressedKeys then V3 0 0 1 else 0
-        down = if S.member KeycodeLCtrl pressedKeys then V3 0 0 (-1) else 0
+moveDirection :: (Epsilon a, Floating a) => AccumulatedInput Keycode -> V3 a
+moveDirection pressedKeys = normalize $ forward + back + left + right + up + down
+  where checkKey keycode vec =
+          case M.lookup keycode pressedKeys of
+            Nothing -> 0
+            Just events -> fromIntegral (sumInputTime events) *^ vec
 
-keysDirection :: (Reflex t, Epsilon a, Floating a, MonadFix m, MonadHold t m) => Dynamic t PressedKeys -> m (Dynamic t (V3 a))
-keysDirection = scanDyn moveDirection (\keys _ -> moveDirection keys)
+        forward = checkKey KeycodeW (V3 1 0 0)
+        back = checkKey KeycodeS (V3 (-1) 0 0)
+        left = checkKey KeycodeA (V3 0 (-1) 0)
+        right = checkKey KeycodeD (V3 0 1 0)
+        up = checkKey KeycodeSpace (V3 0 0 1)
+        down = checkKey KeycodeLCtrl (V3 0 0 (-1))

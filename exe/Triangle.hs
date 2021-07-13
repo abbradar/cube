@@ -148,21 +148,19 @@ drawFrame (GameWindow {..}) (GameState {..}) = do
   glSwapWindow gameWindow
   runPendingFinalizers
 
-gameNetwork :: forall t m. (Reflex t, MonadHold t m, MonadCube m, MonadSubscribeEvent t m) => GameWindow -> GameInitialState -> Event t CubeTickInfo -> Event t SDL.EventPayload -> m (GameExtra t, EventLoopNetwork t GameState)
+gameNetwork :: forall t m. (Reflex t, MonadHold t m, MonadCube m, MonadSubscribeEvent t m) => GameWindow -> GameInitialState -> Event t CubeTickInfo -> Event t (CubeTickInfo, SDL.EventPayload) -> m (GameExtra t, EventLoopNetwork t GameState)
 gameNetwork (GameWindow { gameSettings = GameSettings {..}, ..}) (GameInitialState {..}) tickEvent sdlEvent = mdo
   let resizeEvent = flip push sdlEvent $ \case
-        WindowSizeChangedEvent (WindowSizeChangedEventData { windowSizeChangedEventSize = sz }) -> return $ Just (fromIntegral <$> sz)
+        (_time, WindowSizeChangedEvent (WindowSizeChangedEventData { windowSizeChangedEventSize = sz })) -> return $ Just (fromIntegral <$> sz)
         _ -> return Nothing
   let quitEvent = flip push sdlEvent $ \case
-        QuitEvent -> return $ Just ()
+        (_time, QuitEvent) -> return $ Just ()
         _ -> return Nothing
-  keysPressed <- pressedSDLKeys sdlEvent
-  moveDirection <- keysDirection keysPressed
-  let updateCamera (CubeTickInfo {..}) camera@(Camera {..}) = do
-        dir <- sample $ current moveDirection
-        let distance = fromIntegral ticksElapsed * 0.05
-        return $ camera { cameraPosition = cameraPosition + distance *^ dir }
-  camera <- foldDynM updateCamera mempty tickEvent
+  keysPressed <- pressedSDLKeys tickEvent sdlEvent
+  let movedStep = fmap moveDirection keysPressed
+  let updateCamera step camera@(Camera {..}) = do
+        return $ camera { cameraPosition = cameraPosition + 0.05 *^ step }
+  camera <- foldDynM updateCamera mempty movedStep
   windowSize <- holdDyn (V2 (fromIntegral gameInitialWidth) (fromIntegral gameInitialHeight)) resizeEvent
 
   let screen = fmap (\(V2 width height) -> perspectiveScreen gameFovRadians (fromIntegral width / fromIntegral height) gameNearPlane gameFarPlane) windowSize
