@@ -7,6 +7,7 @@ import Control.Concurrent.Async
 import Control.Monad.IO.Class
 import Control.Monad.Logger
 import Graphics.Caramia as Caramia
+import Data.Functor.Misc
 import System.FilePath
 import Reflex
 import Reflex.Host.Class
@@ -155,7 +156,9 @@ gameNetwork (GameWindow { gameSettings = GameSettings {..}, ..}) (GameInitialSta
       kbEvents = subfanKeyboardEvent sdlEvents
 
   let resizeEvent = fmap (\(_time, info) -> fromIntegral <$> windowSizeChangedEventSize info) $ select sdlEvents WindowSizeChangedEventKey
-      quitEvent = fmap (const ()) $ select sdlEvents QuitEventKey
+      quitWindowEvent = fmap (const ()) $ select sdlEvents QuitEventKey
+      quitKeyEvent = fmap (const ()) $ select kbEvents (Const2 SDL.KeycodeEscape)
+      quitEvent = leftmost [quitWindowEvent, quitKeyEvent]
 
   movedStep <- normalizedMove tickEvent kbEvents
 
