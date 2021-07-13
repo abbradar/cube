@@ -4,7 +4,6 @@
 
 module Cube.Loop.Stable
   ( EventLoop
-  , CubeTickInfo(..)
   , newEventLoop
   , EventLoopHooks(..)
   , stepWithEvents
@@ -28,11 +27,6 @@ data EventLoopState = EventLoopState { lastStepTime :: Timestamp
 data EventLoop = EventLoop { loopLastState :: IORef (Maybe EventLoopState)
                            }
 
-data CubeTickInfo = CubeTickInfo { ticksElapsed :: TicksElapsed
-                                 , currentTime :: Timestamp
-                                 }
-                     deriving (Show, Eq)
-
 newEventLoop :: MonadIO m => Timestamp -> m EventLoop
 newEventLoop lastTime = do
   let state = EventLoopState { lastStepTime = lastTime
@@ -41,8 +35,8 @@ newEventLoop lastTime = do
   loopLastState <- liftIO $ newIORef $ Just state
   return EventLoop {..}
 
-data EventLoopHooks m = EventLoopHooks { loopTickEvent :: CubeTickInfo -> m Bool
-                                       , loopSDLEvent :: CubeTickInfo -> SDL.EventPayload -> m Bool
+data EventLoopHooks m = EventLoopHooks { loopTickEvent :: TimeStep -> m Bool
+                                       , loopSDLEvent :: TimeStep -> SDL.EventPayload -> m Bool
                                        }
 
 stepWithEvents :: forall m. MonadIO m => EventLoop -> EventLoopHooks m -> Timestamp -> TimeInterval -> m Bool
@@ -66,9 +60,9 @@ stepWithEvents  (EventLoop {..}) (EventLoopHooks {..}) currentTime stepInterval 
           -- Last event time can be later than current event time due to race between `newEventLoop` and events happening.
           let eventTimestamp' = later eventTimestamp (lastEventTime state)
           state' <- performSteps state eventTimestamp'
-          let tickInfo = CubeTickInfo { ticksElapsed = eventTimestamp' - lastEventTime state'
-                                      , currentTime = eventTimestamp'
-                                      }
+          let tickInfo = TimeStep { ticksElapsed = eventTimestamp' - lastEventTime state'
+                                  , currentTime = eventTimestamp'
+                                  }
           r <- lift $ loopSDLEvent tickInfo eventPayload
           guard r
           return $ state' { lastEventTime = eventTimestamp' }
@@ -78,9 +72,9 @@ stepWithEvents  (EventLoop {..}) (EventLoopHooks {..}) currentTime stepInterval 
           | eventTime - lastStepTime state < stepInterval = return state
           | otherwise = do
               let stepTime = lastStepTime state + stepInterval
-                  tickInfo = CubeTickInfo { ticksElapsed = eventTime - lastEventTime state
-                                          , currentTime = stepTime
-                                          }
+                  tickInfo = TimeStep { ticksElapsed = eventTime - lastEventTime state
+                                      , currentTime = stepTime
+                                      }
               r <- lift $ loopTickEvent tickInfo
               guard r
               let state' = state { lastStepTime = lastStepTime state + stepInterval, lastEventTime = eventTime }

@@ -1,42 +1,43 @@
 -- | Transform from raw SDL events to direction vectors.
 
 module Cube.Input.Keyboard
-  ( pressedSDLKeys
-  , moveDirection
+  ( pressedKeyPerTick
+  , normalizedMove
   ) where
 
-import Witherable
+import Data.Functor.Misc
 import Control.Monad.Fix
 import Linear
-import qualified Data.Map.Strict as M
 import Reflex
 import SDL hiding (Event)
 
-import Cube.Loop.Stable (CubeTickInfo(..))
+import Cube.Time
+import Cube.Input.Events
 import Cube.Input.Accumulate
 
-pressedSDLKeys :: (Reflex t, MonadFix m, MonadHold t m) => Event t CubeTickInfo -> Event t (CubeTickInfo, EventPayload) -> m (Event t (AccumulatedInput Keycode))
-pressedSDLKeys tickEvent sdlEvent = accumulateInput tickEvent (mapMaybe getKeyboardEvent sdlEvent)
-  where getKeyboardEvent (tick, event) =
-          case event of
-            KeyboardEvent (KeyboardEventData { keyboardEventKeyMotion = motion, keyboardEventKeysym = Keysym { keysymKeycode = kc } }) ->
-              let isPressed =
-                    case motion of
-                      Pressed -> True
-                      Released -> False
-              in Just (tick, (kc, isPressed))
-            _ -> Nothing
+-- This function doesn't check
+pressedKeyPerTick :: (Reflex t, MonadFix m, MonadHold t m) => Keycode -> Event t TimeStep -> KeyboardEventSelector t -> m (Event t TicksElapsed)
+pressedKeyPerTick keycode tickEvent kbEvents = accumulateInput tickEvent (fmap getPressed $ select kbEvents (Const2 keycode))
+  where getPressed (tick, info) =
+          let isPressed =
+                case keyboardEventKeyMotion info of
+                  Pressed -> True
+                  Released -> False
+          in (tick, isPressed)
 
-moveDirection :: (Epsilon a, Floating a) => AccumulatedInput Keycode -> V3 a
-moveDirection pressedKeys = normalize $ forward + back + left + right + up + down
-  where checkKey keycode vec =
-          case M.lookup keycode pressedKeys of
-            Nothing -> 0
-            Just events -> fromIntegral (sumInputTime events) *^ vec
+normalizedMove :: (Reflex t, Epsilon a, Floating a, MonadFix m, MonadHold t m) => Event t TimeStep -> KeyboardEventSelector t -> m (Event t (V3 a))
+normalizedMove tickEvent kbEvents = do
+  keyEvents <- mapM (uncurry eventForKey) keys
+  return $ fmap normalize $ mergeWith (+) keyEvents
 
-        forward = checkKey KeycodeW (V3 1 0 0)
-        back = checkKey KeycodeS (V3 (-1) 0 0)
-        left = checkKey KeycodeA (V3 0 (-1) 0)
-        right = checkKey KeycodeD (V3 0 1 0)
-        up = checkKey KeycodeSpace (V3 0 0 1)
-        down = checkKey KeycodeLCtrl (V3 0 0 (-1))
+  where eventForKey keycode vec = do
+          event <- pressedKeyPerTick keycode tickEvent kbEvents
+          return $ fmap (\elapsed -> fromIntegral elapsed *^ vec) event
+
+        keys = [ (KeycodeW, V3 1 0 0)
+               , (KeycodeS, V3 (-1) 0 0)
+               , (KeycodeA, V3 0 (-1) 0)
+               , (KeycodeD, V3 0 1 0)
+               , (KeycodeSpace, V3 0 0 1)
+               , (KeycodeLCtrl, V3 0 0 (-1))
+               ]

@@ -1,10 +1,11 @@
 { mkDerivation, aeson, async, attoparsec, attoparsec-binary, base
 , base64-bytestring, bytestring, bytestring-mmap
-, bytestring-to-vector, caramia, containers, directory, exceptions
-, filepath, hashable, hpack, hsnoise, JuicyPixels, lens, linear
-, monad-logger, mtl, reflex, scientific, sdl2, stdenv
-, storable-tuple, string-interpolate, text, unordered-containers
-, vector
+, bytestring-to-vector, caramia, containers, dependent-map
+, dependent-sum, dependent-sum-template, directory, exceptions
+, filepath, hashable, hpack, hsnoise, JuicyPixels, lens, lib
+, linear, monad-logger, mtl, ref-tf, reflex, scientific, sdl2
+, storable-tuple, string-interpolate, text, transformers
+, unordered-containers, vector, witherable
 }:
 mkDerivation {
   pname = "cube";
@@ -15,18 +16,22 @@ mkDerivation {
   libraryHaskellDepends = [
     aeson async attoparsec attoparsec-binary base base64-bytestring
     bytestring bytestring-mmap bytestring-to-vector caramia containers
-    directory exceptions filepath hashable hsnoise JuicyPixels lens
-    linear monad-logger mtl reflex scientific sdl2 storable-tuple
-    string-interpolate text unordered-containers vector
+    dependent-map dependent-sum dependent-sum-template directory
+    exceptions filepath hashable hsnoise JuicyPixels lens linear
+    monad-logger mtl ref-tf reflex scientific sdl2 storable-tuple
+    string-interpolate text transformers unordered-containers vector
+    witherable
   ];
   libraryToolDepends = [ hpack ];
   executableHaskellDepends = [
     aeson async attoparsec attoparsec-binary base base64-bytestring
     bytestring bytestring-mmap bytestring-to-vector caramia containers
-    directory exceptions filepath hashable hsnoise JuicyPixels lens
-    linear monad-logger mtl reflex scientific sdl2 storable-tuple
-    string-interpolate text unordered-containers vector
+    dependent-map dependent-sum dependent-sum-template directory
+    exceptions filepath hashable hsnoise JuicyPixels lens linear
+    monad-logger mtl ref-tf reflex scientific sdl2 storable-tuple
+    string-interpolate text transformers unordered-containers vector
+    witherable
   ];
   prePatch = "hpack";
-  license = stdenv.lib.licenses.bsd3;
+  license = lib.licenses.bsd3;
 }

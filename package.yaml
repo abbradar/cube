@@ -23,6 +23,8 @@ dependencies:
   - mtl
   - scientific
   - witherable
+  - dependent-sum-template
+  - dependent-map
   - hashable
   - unordered-containers
   - containers
@@ -58,6 +60,7 @@ default-extensions:
   - DataKinds
   - GeneralizedNewtypeDeriving
   - RankNTypes
+  - GADTs
   - TypeFamilies
   - ConstraintKinds
   - LambdaCase

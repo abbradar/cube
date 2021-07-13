@@ -1,5 +1,7 @@
 -- | Time utils.
 
+{-# LANGUAGE StrictData #-}
+
 module Cube.Time
   ( SDL.Timestamp
   , TicksElapsed
@@ -8,6 +10,7 @@ module Cube.Time
   , isLater
   , earlier
   , later
+  , TimeStep(..)
   ) where
 
 import Data.Int
@@ -32,3 +35,8 @@ earlier a b = if a `isEarlier` b then a else b
 
 later :: Timestamp -> Timestamp -> Timestamp
 later a b = if a `isLater` b then a else b
+
+data TimeStep = TimeStep { ticksElapsed :: TicksElapsed
+                         , currentTime :: Timestamp
+                         }
+              deriving (Show, Eq)

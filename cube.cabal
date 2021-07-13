@@ -24,6 +24,7 @@ library
       Cube.Graphics.TRS
       Cube.Graphics.Types
       Cube.Input.Accumulate
+      Cube.Input.Events
       Cube.Input.Keyboard
       Cube.Loop.Reflex
       Cube.Loop.Stable
@@ -65,6 +66,7 @@ library
       DataKinds
       GeneralizedNewtypeDeriving
       RankNTypes
+      GADTs
       TypeFamilies
       ConstraintKinds
       LambdaCase
@@ -89,7 +91,9 @@ library
     , bytestring-to-vector
     , caramia
     , containers
+    , dependent-map
     , dependent-sum
+    , dependent-sum-template
     , directory
     , exceptions
     , filepath
@@ -140,6 +144,7 @@ executable triangle
       DataKinds
       GeneralizedNewtypeDeriving
       RankNTypes
+      GADTs
       TypeFamilies
       ConstraintKinds
       LambdaCase
@@ -165,7 +170,9 @@ executable triangle
     , caramia
     , containers
     , cube
+    , dependent-map
     , dependent-sum
+    , dependent-sum-template
     , directory
     , exceptions
     , filepath

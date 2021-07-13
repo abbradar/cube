@@ -3,76 +3,54 @@
 {-# LANGUAGE StrictData #-}
 
 module Cube.Input.Accumulate
-  ( InputEvent(..)
-  , AccumulatedInput
-  , accumulateInput
-  , sumInputTime
+  ( accumulateInput
   ) where
 
 import Control.Applicative
-import Witherable
 import Control.Monad.Fix
-import Data.Map.Strict (Map)
-import qualified Data.Map.Strict as M
 import Reflex
 
 import Reflex.Combinators
 import Cube.Utils
 import Cube.Time
-import Cube.Loop.Stable
 
-data InputEvent = InputEvent { inputPressedNow :: Bool
-                             , inputElapsedTime :: TimeInterval
-                             }
-                deriving (Show, Eq)
+data AccumulatedInput = AccumulatedInput { inputPressedSince :: Maybe Timestamp
+                                         , inputPressedTime :: TimeInterval
+                                         }
+                      deriving (Show, Eq)
 
-type AccumulatedInput k = Map k [InputEvent]
+accumulateInput :: forall t m. (Reflex t, MonadFix m, MonadHold t m) => Event t TimeStep -> Event t (TimeStep,  Bool) -> m (Event t TimeInterval)
+accumulateInput tickEvent inputEvent = foldPullEvent processEvent noInput $ mergeWith doMerge [tickEvent', inputEvent']
 
--- The first field is time since the key has been pressed now.
-type InputAccumulator k = Map k (Maybe Timestamp, [InputEvent])
+  where noInput = AccumulatedInput { inputPressedSince = Nothing
+                                   , inputPressedTime = 0
+                                   }
 
-accumulateInput :: forall k t m. (Ord k, Reflex t, MonadFix m, MonadHold t m) => Event t CubeTickInfo -> Event t (CubeTickInfo, (k, Bool)) -> m (Event t (AccumulatedInput k))
-accumulateInput tickEvent inputEvent = foldPullEvent processEvent M.empty $ mergeWith doMerge [tickEvent', inputEvent']
+        tickEvent' = fmap (\tick -> (tick, Nothing, True)) tickEvent
+        inputEvent' = fmap (\(tick, pressed) -> (tick, Just pressed, False)) inputEvent
+        doMerge = (\(_tick, pressedA, tickedA) (tick, pressedB, tickedB) -> (tick, pressedA <|> pressedB, tickedA || tickedB))
 
-  where tickEvent' = fmap (\tick -> (tick, Nothing, True)) tickEvent
-        inputEvent' = fmap (\(tick, payload) -> (tick, Just payload, False)) inputEvent
-        doMerge = (\(_tick, payloadA, tickedA) (tick, payloadB, tickedB) -> (tick, payloadA <|> payloadB, tickedA || tickedB))
+        processEvent :: (TimeStep, Maybe Bool, Bool) -> AccumulatedInput -> (AccumulatedInput, Maybe TimeInterval)
+        processEvent (TimeStep {..}, mevent, isTicked) accumulator = (nextAccumulator, integratedEvent)
+          where passedTicks someAcc =
+                  case inputPressedSince someAcc of
+                    Nothing -> 0
+                    Just since -> currentTime - since
 
-        processEvent :: (CubeTickInfo, Maybe (k, Bool), Bool) -> InputAccumulator k -> (InputAccumulator k, Maybe (AccumulatedInput k))
-        processEvent (CubeTickInfo {..}, mevent, isTicked) accumulator = (nextAccumulator, integratedEvent)
-          where accumulator' =
+                accumulator' =
                   case mevent of
-                    Just (inputKey, isPressed) ->
+                    Just isPressed ->
                       if isPressed then
-                        M.insertWith (\(pressedA, _newEvents) (pressedB, events) -> (sumMaybeWith max pressedA pressedB, events)) inputKey (Just currentTime, []) accumulator
+                        accumulator { inputPressedSince = sumMaybeWith later (inputPressedSince accumulator) (Just currentTime) }
                       else
-                        let process st@(pressed, events) =
-                              case pressed of
-                                Nothing -> st
-                                Just since -> (Nothing, InputEvent { inputPressedNow = False, inputElapsedTime = currentTime - since } : events)
-                        in M.adjust process inputKey accumulator
+                        accumulator { inputPressedSince = Nothing, inputPressedTime = inputPressedTime accumulator + passedTicks accumulator }
                     _ -> accumulator
-                -- Each tick we drop keys that are no longer pressed and start calculating anew.
+                -- Each tick we start calculating anew.
                 nextAccumulator
                   | not isTicked = accumulator'
-                  | otherwise =
-                    let process (pressed, _events) =
-                          case pressed of
-                            Nothing -> Nothing
-                            Just _since -> Just (Just currentTime, [])
-                    in mapMaybe process accumulator'
+                  | otherwise = AccumulatedInput { inputPressedSince = fmap (const currentTime) (inputPressedSince accumulator'), inputPressedTime = 0 }
 
-                integratedKeys =
-                  let process (pressed, events) =
-                        let events' =
-                              case pressed of
-                                Nothing -> events
-                                Just since -> InputEvent { inputPressedNow = True, inputElapsedTime = currentTime - since } : events
-                        in reverse events'
-                  in fmap process accumulator'
+                totalTime = inputPressedTime accumulator' + passedTicks accumulator'
                 integratedEvent
-                  | isTicked = Just integratedKeys
+                  | isTicked && totalTime > 0 = Just totalTime
                   | otherwise = Nothing
-
-sumInputTime :: [InputEvent] -> TicksElapsed
-sumInputTime = foldr (\event time -> time + inputElapsedTime event) 0

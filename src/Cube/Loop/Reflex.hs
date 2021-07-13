@@ -33,10 +33,10 @@ import Cube.Loop.Stable
 import Cube.Graphics.Framerate
 
 data ReflexEventLoop t = ReflexEventLoop { reflexEventLoop :: EventLoop
-                                         , reflexTickEvent :: Event t CubeTickInfo
-                                         , reflexTickRef :: IORef (Maybe (EventTrigger t CubeTickInfo))
-                                         , reflexSDLEvent :: Event t (CubeTickInfo, SDL.EventPayload)
-                                         , reflexSDLRef :: IORef (Maybe (EventTrigger t (CubeTickInfo, SDL.EventPayload)))
+                                         , reflexTickEvent :: Event t TimeStep
+                                         , reflexTickRef :: IORef (Maybe (EventTrigger t TimeStep))
+                                         , reflexSDLEvent :: Event t (TimeStep, SDL.EventPayload)
+                                         , reflexSDLRef :: IORef (Maybe (EventTrigger t (TimeStep, SDL.EventPayload)))
                                          }
 
 newReflexEventLoop :: (MonadReflexCreateTrigger t m, MonadIO m, MonadRef m, Ref m ~ Ref IO) => Timestamp -> m (ReflexEventLoop t)
@@ -68,7 +68,7 @@ data EventLoopNetwork t frame = EventLoopNetwork { eloopFrameBehavior :: Behavio
                                                  }
 
 data EventLoopApp frame extra action =
-  EventLoopApp { eappNetworkSetup :: forall t m. (Reflex t, MonadHold t m, MonadSample t m, MonadCube m, MonadSubscribeEvent t m) => Event t CubeTickInfo -> Event t (CubeTickInfo, SDL.EventPayload) -> m (extra t, EventLoopNetwork t frame)
+  EventLoopApp { eappNetworkSetup :: forall t m. (Reflex t, MonadHold t m, MonadSample t m, MonadCube m, MonadSubscribeEvent t m) => Event t TimeStep -> Event t (TimeStep, SDL.EventPayload) -> m (extra t, EventLoopNetwork t frame)
                , eappDrawFrame :: forall t m. (MonadCube m) => extra t -> frame -> m ()
                , eappReadAction :: forall t m. (MonadReadEvent t m) => extra t -> m action
                , eappInterpretAction :: forall m. (MonadCube m) => action -> m ()

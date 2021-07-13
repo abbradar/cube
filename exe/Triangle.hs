@@ -16,13 +16,14 @@ import Data.Aeson.Utils
 import qualified Data.GlTF.Resources as TF
 import Data.GLSL.Preprocessor
 import Cube.Types
-import Cube.Loop.Stable
+import Cube.Time
 import Cube.Loop.Reflex
 import Cube.Graphics.Types
 import Cube.Graphics.Screen
 import Cube.Graphics.Camera
 import Cube.Graphics.Resources
 import Cube.Graphics.Render
+import Cube.Input.Events
 import Cube.Input.Keyboard
 
 data GameSettings = GameSettings { gameVertexShader :: FilePath
@@ -148,19 +149,20 @@ drawFrame (GameWindow {..}) (GameState {..}) = do
   glSwapWindow gameWindow
   runPendingFinalizers
 
-gameNetwork :: forall t m. (Reflex t, MonadHold t m, MonadCube m, MonadSubscribeEvent t m) => GameWindow -> GameInitialState -> Event t CubeTickInfo -> Event t (CubeTickInfo, SDL.EventPayload) -> m (GameExtra t, EventLoopNetwork t GameState)
+gameNetwork :: forall t m. (Reflex t, MonadHold t m, MonadCube m, MonadSubscribeEvent t m) => GameWindow -> GameInitialState -> Event t TimeStep -> Event t (TimeStep, SDL.EventPayload) -> m (GameExtra t, EventLoopNetwork t GameState)
 gameNetwork (GameWindow { gameSettings = GameSettings {..}, ..}) (GameInitialState {..}) tickEvent sdlEvent = mdo
-  let resizeEvent = flip push sdlEvent $ \case
-        (_time, WindowSizeChangedEvent (WindowSizeChangedEventData { windowSizeChangedEventSize = sz })) -> return $ Just (fromIntegral <$> sz)
-        _ -> return Nothing
-  let quitEvent = flip push sdlEvent $ \case
-        (_time, QuitEvent) -> return $ Just ()
-        _ -> return Nothing
-  keysPressed <- pressedSDLKeys tickEvent sdlEvent
-  let movedStep = fmap moveDirection keysPressed
+  let sdlEvents = fanSDLEvent sdlEvent
+      kbEvents = subfanKeyboardEvent sdlEvents
+
+  let resizeEvent = fmap (\(_time, info) -> fromIntegral <$> windowSizeChangedEventSize info) $ select sdlEvents WindowSizeChangedEventKey
+      quitEvent = fmap (const ()) $ select sdlEvents QuitEventKey
+
+  movedStep <- normalizedMove tickEvent kbEvents
+
   let updateCamera step camera@(Camera {..}) = do
         return $ camera { cameraPosition = cameraPosition + 0.05 *^ step }
   playerCamera <- foldDynM updateCamera mempty movedStep
+
   windowSize <- holdDyn (V2 (fromIntegral gameInitialWidth) (fromIntegral gameInitialHeight)) resizeEvent
 
   let screen = fmap (\(V2 width height) -> perspectiveScreen gameFovRadians (fromIntegral width / fromIntegral height) gameNearPlane gameFarPlane) windowSize
