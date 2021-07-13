@@ -98,7 +98,6 @@ runInEventLoop (EventLoopApp {..}) = do
           else do
             state <- sample eloopFrameBehavior
             eappDrawFrame extraInfo state
-            liftIO $ putStrLn "frame drawn"
             (newTime, _elapsed) <- fpsDelay fpsLimit eappFrameInterval
             go newTime
 

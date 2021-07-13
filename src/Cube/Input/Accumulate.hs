@@ -15,7 +15,6 @@ import Control.Monad.Fix
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as M
 import Reflex
-import Debug.Trace
 import qualified SDL
 
 import Cube.Loop.Stable
@@ -76,7 +75,7 @@ accumulateInput tickEvent inputEvent = do
                         in reverse events'
                   in fmap process accumulator'
                 integratedEvent
-                  | isTicked = Just $ Debug.Trace.trace ("integrated " ++ show integratedKeys) integratedKeys
+                  | isTicked = Just integratedKeys
                   | otherwise = Nothing
 
 sumInputTime :: [InputEvent] -> TicksElapsed
