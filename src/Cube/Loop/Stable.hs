@@ -16,8 +16,6 @@ import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Maybe
 import Data.IORef
-import Data.Int
-import Data.Word
 import qualified SDL
 
 import Cube.Time

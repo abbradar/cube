@@ -9,7 +9,7 @@ module Cube.Graphics.Camera
 import Control.Lens
 import Linear
 
-import Cube.Graphics.TRS
+import Cube.Geometry
 
 defaultUp :: Num a => V3 a
 defaultUp = V3 0 0 1

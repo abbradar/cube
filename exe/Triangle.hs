@@ -160,13 +160,13 @@ gameNetwork (GameWindow { gameSettings = GameSettings {..}, ..}) (GameInitialSta
   let movedStep = fmap moveDirection keysPressed
   let updateCamera step camera@(Camera {..}) = do
         return $ camera { cameraPosition = cameraPosition + 0.05 *^ step }
-  camera <- foldDynM updateCamera mempty movedStep
+  playerCamera <- foldDynM updateCamera mempty movedStep
   windowSize <- holdDyn (V2 (fromIntegral gameInitialWidth) (fromIntegral gameInitialHeight)) resizeEvent
 
   let screen = fmap (\(V2 width height) -> perspectiveScreen gameFovRadians (fromIntegral width / fromIntegral height) gameNearPlane gameFarPlane) windowSize
       nodes = constant initialNodes
 
-      frameBehavior = GameState <$> current camera <*> current screen <*> nodes
+      frameBehavior = GameState <$> current playerCamera <*> current screen <*> nodes
 
       network = EventLoopNetwork { eloopQuitEvent = quitEvent
                                  , eloopFrameBehavior = frameBehavior

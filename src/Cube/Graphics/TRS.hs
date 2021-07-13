@@ -2,7 +2,6 @@
 
 module Cube.Graphics.TRS
   ( TRS(..)
-  , matrixToQuaternion
   , matrixToTRS
   , trsToMatrix
   ) where

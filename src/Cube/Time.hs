@@ -1,7 +1,8 @@
 -- | Time utils.
 
 module Cube.Time
-  ( TicksElapsed
+  ( SDL.Timestamp
+  , TicksElapsed
   , TimeInterval
   , isEarlier
   , isLater
@@ -11,9 +12,7 @@ module Cube.Time
 
 import Data.Int
 import Data.Word
-import qualified SDL
-
-type Timestamp = SDL.Timestamp
+import SDL (Timestamp)
 
 type TimeInterval = Word32
 type TicksElapsed = TimeInterval
