@@ -28,7 +28,7 @@ pressedKeyPerTick keycode tickEvent kbEvents = accumulateInput tickEvent (fmap g
 normalizedMove :: (Reflex t, Epsilon a, Floating a, MonadFix m, MonadHold t m) => Event t TimeStep -> KeyboardEventSelector t -> m (Event t (V3 a))
 normalizedMove tickEvent kbEvents = do
   keyEvents <- mapM (uncurry eventForKey) keys
-  return $ fmap normalize $ mergeWith (+) keyEvents
+  return $ normalize <$> mergeWith (+) keyEvents
 
   where eventForKey keycode vec = do
           event <- pressedKeyPerTick keycode tickEvent kbEvents

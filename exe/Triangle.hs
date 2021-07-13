@@ -156,8 +156,8 @@ gameNetwork (GameWindow { gameSettings = GameSettings {..}, ..}) (GameInitialSta
       kbEvents = subfanKeyboardEvent sdlEvents
 
   let resizeEvent = fmap (\(_time, info) -> fromIntegral <$> windowSizeChangedEventSize info) $ select sdlEvents WindowSizeChangedEventKey
-      quitWindowEvent = fmap (const ()) $ select sdlEvents QuitEventKey
-      quitKeyEvent = fmap (const ()) $ select kbEvents (Const2 SDL.KeycodeEscape)
+      quitWindowEvent = const () <$> select sdlEvents QuitEventKey
+      quitKeyEvent = const () <$> select kbEvents (Const2 SDL.KeycodeEscape)
       quitEvent = leftmost [quitWindowEvent, quitKeyEvent]
 
   movedStep <- normalizedMove tickEvent kbEvents
