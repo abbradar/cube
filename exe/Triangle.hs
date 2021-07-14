@@ -167,8 +167,9 @@ gameNetwork (GameWindow { gameSettings = GameSettings {..}, ..}) (GameInitialSta
   mouseMoveStep <- relativeMovePerTick tickEvent (select sdlEvents MouseMotionEventKey)
 
   let normalizedShift move = do
-        size <- sample $ current windowSize
-        return $ Just $ fmap fromIntegral move / fmap fromIntegral size
+        V2 sx sy <- sample $ current windowSize
+        let ratio = fromIntegral $ min sx sy
+        return $ Just $ fmap fromIntegral move ^/ ratio
   let normalizedMouseMoveStep = push normalizedShift mouseMoveStep
   
   let updateCamera (mmove, mrotation) camera@(Camera {..}) = do
