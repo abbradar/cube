@@ -4,12 +4,13 @@ module Cube.Graphics.Camera
   ( Camera(..)
   , cameraToMatrix
   , cameraFromEyeTarget
+  , cameraRotateNoRoll
   ) where
 
 import Control.Lens
 import Linear
 
-import Cube.Geometry
+import Cube.Graphics.Geometry
 
 defaultUp :: Num a => V3 a
 defaultUp = V3 0 0 1
@@ -35,6 +36,11 @@ cameraFromEyeTarget eye target =
          , cameraRotation = matrixToQuaternion $ lookAt eye target defaultUp ^. _m33
          }
 
-
 cameraToMatrix :: Floating a => Camera a -> M44 a
 cameraToMatrix (Camera {..}) = mkTransformation cameraRotation cameraPosition
+
+cameraRotateNoRoll :: (Conjugate a, RealFloat a, Epsilon a) => V2 a -> Camera a -> Camera a
+cameraRotateNoRoll (V2 x y) camera =
+  camera { cameraRotation = cameraRotation camera * rotX * rotZ }
+  where rotX = axisAngle (V3 1 0 0) y
+        rotZ = axisAngle (V3 0 0 1) x

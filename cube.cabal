@@ -14,9 +14,9 @@ build-type:          Simple
 library
   exposed-modules:
       Control.Monad.Ref.Logger
-      Cube.Geometry
       Cube.Graphics.Camera
       Cube.Graphics.Framerate
+      Cube.Graphics.Geometry
       Cube.Graphics.Render
       Cube.Graphics.Resources
       Cube.Graphics.Screen
@@ -26,6 +26,7 @@ library
       Cube.Input.Accumulate
       Cube.Input.Events
       Cube.Input.Keyboard
+      Cube.Input.Mouse
       Cube.Loop.Reflex
       Cube.Loop.Stable
       Cube.Time

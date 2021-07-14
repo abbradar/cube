@@ -4,6 +4,7 @@ import GHC.Generics (Generic)
 import System.Environment
 import Data.Aeson as JSON
 import Control.Concurrent.Async
+import Control.Applicative
 import Control.Monad.IO.Class
 import Control.Monad.Logger
 import Graphics.Caramia as Caramia
@@ -26,6 +27,7 @@ import Cube.Graphics.Resources
 import Cube.Graphics.Render
 import Cube.Input.Events
 import Cube.Input.Keyboard
+import Cube.Input.Mouse
 
 data GameSettings = GameSettings { gameVertexShader :: FilePath
                                  , gameFragmentShader :: FilePath
@@ -160,13 +162,31 @@ gameNetwork (GameWindow { gameSettings = GameSettings {..}, ..}) (GameInitialSta
       quitKeyEvent = const () <$> select kbEvents (Const2 SDL.KeycodeEscape)
       quitEvent = leftmost [quitWindowEvent, quitKeyEvent]
 
-  movedStep <- normalizedMove tickEvent kbEvents
-
-  let updateCamera step camera@(Camera {..}) = do
-        return $ camera { cameraPosition = cameraPosition + 0.05 *^ step }
-  playerCamera <- foldDynM updateCamera mempty movedStep
-
   windowSize <- holdDyn (V2 (fromIntegral gameInitialWidth) (fromIntegral gameInitialHeight)) resizeEvent
+  kbdMoveStep <- normalizedMove tickEvent kbEvents
+  mouseMoveStep <- relativeMovePerTick tickEvent (select sdlEvents MouseMotionEventKey)
+
+  let normalizedShift move = do
+        size <- sample $ current windowSize
+        return $ Just $ fmap fromIntegral move / fmap fromIntegral size
+  let normalizedMouseMoveStep = push normalizedShift mouseMoveStep
+  
+  let updateCamera (mmove, mrotation) camera@(Camera {..}) = do
+        let camera' =
+              case mmove of
+                Nothing -> camera
+                Just step -> camera { cameraPosition = cameraPosition + 0.05 *^ step }
+            camera'' =
+              case mrotation of
+                Nothing -> camera'
+                Just shift -> cameraRotateNoRoll shift camera'
+        return camera''
+
+  let kbdCameraStep = fmap ((, Nothing) . Just) kbdMoveStep
+      mouseCameraStep = fmap ((Nothing, ) . Just) normalizedMouseMoveStep
+      cameraStep = mergeWith (\(moveA, rotateA) (moveB, rotateB) -> (moveA <|> moveB, rotateA <|> rotateB)) [kbdCameraStep, mouseCameraStep]
+
+  playerCamera <- foldDynM updateCamera mempty cameraStep
 
   let screen = fmap (\(V2 width height) -> perspectiveScreen gameFovRadians (fromIntegral width / fromIntegral height) gameNearPlane gameFarPlane) windowSize
       nodes = constant initialNodes

@@ -9,7 +9,7 @@ module Cube.Graphics.TRS
 import Control.Lens
 import Linear
 
-import Cube.Geometry
+import Cube.Graphics.Geometry
 
 data TRS a = TRS { trsTranslation :: V3 a
                  , trsRotation :: Quaternion a
