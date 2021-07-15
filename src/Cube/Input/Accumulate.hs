@@ -42,7 +42,7 @@ accumulatePresses tickEvent inputEvent = foldPullEvent processEvent noInput $ me
                   case mevent of
                     Just isPressed ->
                       if isPressed then
-                        accumulator { inputPressedSince = sumMaybeWith later (inputPressedSince accumulator) (Just currentTime) }
+                        accumulator { inputPressedSince = sumMaybeWith earlier (inputPressedSince accumulator) (Just currentTime) }
                       else
                         accumulator { inputPressedSince = Nothing, inputPressedTime = inputPressedTime accumulator + passedTicks accumulator }
                     _ -> accumulator
