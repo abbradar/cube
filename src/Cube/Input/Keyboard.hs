@@ -34,10 +34,10 @@ normalizedMove tickEvent kbEvents = do
           event <- pressedKeyPerTick keycode tickEvent kbEvents
           return $ fmap (\elapsed -> fromIntegral elapsed *^ vec) event
 
-        keys = [ (KeycodeW, V3 1 0 0)
-               , (KeycodeS, V3 (-1) 0 0)
-               , (KeycodeA, V3 0 (-1) 0)
-               , (KeycodeD, V3 0 1 0)
-               , (KeycodeSpace, V3 0 0 1)
-               , (KeycodeLCtrl, V3 0 0 (-1))
+        keys = [ (KeycodeS, V3 0 0 1)
+               , (KeycodeW, V3 0 0 (-1))
+               , (KeycodeD, V3 1 0 0)
+               , (KeycodeA, V3 (-1) 0 0)
+               , (KeycodeLCtrl, V3 0 (-1) 0)
+               , (KeycodeSpace, V3 0 1 0)
                ]

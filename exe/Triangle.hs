@@ -176,7 +176,7 @@ gameNetwork (GameWindow { gameSettings = GameSettings {..}, ..}) (GameInitialSta
         let camera' =
               case mmove of
                 Nothing -> camera
-                Just step -> camera { cameraPosition = cameraPosition + 0.05 *^ step }
+                Just step -> camera { cameraPosition = cameraPosition + 0.1 *^ (rotate cameraRotation step) }
             camera'' =
               case mrotation of
                 Nothing -> camera'

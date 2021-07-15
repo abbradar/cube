@@ -13,7 +13,7 @@ import Linear
 import Cube.Graphics.Geometry
 
 defaultUp :: Num a => V3 a
-defaultUp = V3 0 0 1
+defaultUp = V3 0 1 0
 
 data Camera a = Camera { cameraPosition :: V3 a
                        , cameraRotation :: Quaternion a
@@ -36,11 +36,11 @@ cameraFromEyeTarget eye target =
          , cameraRotation = matrixToQuaternion $ lookAt eye target defaultUp ^. _m33
          }
 
-cameraToMatrix :: Floating a => Camera a -> M44 a
-cameraToMatrix (Camera {..}) = mkTransformation cameraRotation cameraPosition
+cameraToMatrix :: (Conjugate a, RealFloat a) => Camera a -> M44 a
+cameraToMatrix (Camera {..}) = inv44 $ mkTransformation cameraRotation cameraPosition
 
 cameraRotateNoRoll :: (Conjugate a, RealFloat a, Epsilon a) => V2 a -> Camera a -> Camera a
 cameraRotateNoRoll (V2 x y) camera =
-  camera { cameraRotation = cameraRotation camera * rotX * rotZ }
-  where rotX = axisAngle (V3 1 0 0) y
-        rotZ = axisAngle (V3 0 0 1) x
+  camera { cameraRotation = rotUp * cameraRotation camera * rotRight }
+  where rotRight = axisAngle (V3 1 0 0) (-y)
+        rotUp = axisAngle (V3 0 1 0) (-x)
