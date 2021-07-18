@@ -23,7 +23,7 @@ import Cube.Loop.Reflex
 import Cube.Graphics.Types
 import Cube.Graphics.Screen
 import Cube.Graphics.Camera
-import Cube.Graphics.Resources
+import Cube.Graphics.Model
 import Cube.Graphics.Render
 import Cube.Input.Events
 import Cube.Input.Keyboard
@@ -57,7 +57,7 @@ data GameState = GameState { stateCamera :: CameraF
                            , statePreparedNodes :: PreparedNodes
                            }
 
-data GameInitialState = GameInitialState { initialNodes :: LoadedNodes
+data GameInitialState = GameInitialState { initialNodes :: LoadedModel
                                          }
 
 data GameExtra t = GameExtra { gameResizeHandle :: EventHandle t (V2 Int)
@@ -106,7 +106,7 @@ main = do
       Right fragShader <- liftIO $ wait fragShaderPromise
       shaderCache <- newCubePipelineCache vertexShader fragShader
       models <- liftIO $ mapM wait modelsPromises
-      modelNodes <- mconcat <$> mapM (loadNodes shaderCache) models
+      modelNodes <- mconcat <$> mapM (loadModel shaderCache) models
 
       let initialState = GameInitialState { initialNodes = modelNodes
                                           }
@@ -187,7 +187,7 @@ gameNetwork (GameWindow { gameSettings = GameSettings {..}, ..}) (GameInitialSta
 
   let screen = fmap (\(V2 width height) -> perspectiveScreen gameFovRadians (fromIntegral width / fromIntegral height) gameNearPlane gameFarPlane) windowSize
       nodes = constant initialNodes
-      preparedNodes = fmap prepareLoadedNodes nodes
+      preparedNodes = fmap prepareLoadedModel nodes
 
       frameBehavior = GameState <$> current playerCamera <*> current screen <*> preparedNodes
 

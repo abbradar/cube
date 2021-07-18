@@ -7,7 +7,7 @@ module Cube.Graphics.Render
   , PreparedMaterialMeshes(..)
   , PreparedPipeline(..)
   , PreparedNodes
-  , prepareLoadedNodes
+  , prepareLoadedModel
   , drawPreparedNodes
   , runDrawPreparedNodes
   ) where
@@ -25,7 +25,7 @@ import Linear
 import Cube.Types
 import Cube.Graphics.Types
 import Cube.Graphics.TRS
-import Cube.Graphics.Resources
+import Cube.Graphics.Model
 import Cube.Graphics.Screen
 import Cube.Graphics.Camera
 import Cube.Graphics.ShadersCache
@@ -60,8 +60,8 @@ instance Semigroup PreparedPipeline where
 
 type PreparedNodes = IntMap PreparedPipeline
 
-prepareLoadedNodes :: LoadedNodes -> PreparedNodes
-prepareLoadedNodes nodes = flip execState IM.empty $ mapM_ (go mempty) $ loadedNodes nodes
+prepareLoadedModel :: LoadedModel -> PreparedNodes
+prepareLoadedModel nodes = flip execState IM.empty $ mapM_ (go mempty) $ loadedNodes nodes
   where go :: TRSF -> LoadedNodeTree -> State (IntMap PreparedPipeline) ()
         go parentTrs (LoadedNodeTree {..}) = do
           let trs = parentTrs <> lnodeTrs

@@ -51,17 +51,17 @@ readRawAccessorWithBuffer (BoundBufferView {..}) (Accessor {..}) = do
         accessorVec :: forall a. VS.Storable a => AccessorRawVector a
         accessorVec =
           case accessorType of
-            Scalar -> ARScalar vec
-            Vec2 -> ARVec2 vec
-            Vec3 -> ARVec3 vec
-            Vec4 -> ARVec4 vec
-            Mat2 -> ARMat2 vec
-            Mat3 -> ARMat3 vec
-            Mat4 -> ARMat4 vec
+            ATScalar -> ARScalar vec
+            ATVec2 -> ARVec2 vec
+            ATVec3 -> ARVec3 vec
+            ATVec4 -> ARVec4 vec
+            ATMat2 -> ARMat2 vec
+            ATMat3 -> ARMat3 vec
+            ATMat4 -> ARMat4 vec
     in case accessorComponentType of
-      Byte -> ARByte accessorVec
-      UnsignedByte -> ARUByte accessorVec
-      Short -> ARShort accessorVec
-      UnsignedShort -> ARUShort accessorVec
-      UnsignedInt -> ARUInt accessorVec
-      Float -> ARFloat accessorVec
+      CTByte -> ARByte accessorVec
+      CTUnsignedByte -> ARUByte accessorVec
+      CTShort -> ARShort accessorVec
+      CTUnsignedShort -> ARUShort accessorVec
+      CTUnsignedInt -> ARUInt accessorVec
+      CTFloat -> ARFloat accessorVec

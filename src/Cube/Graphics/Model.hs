@@ -1,10 +1,10 @@
--- | Load resources into GPU memory.
+-- | Load model resources into GPU memory.
 
 {-# LANGUAGE StrictData #-}
 
-module Cube.Graphics.Resources
+module Cube.Graphics.Model
   ( NodeName
-  , LoadedNodes(..)
+  , LoadedModel(..)
   , LoadedNodeTree(..)
   , LoadedMesh(..)
   , TextureType(..)
@@ -15,7 +15,7 @@ module Cube.Graphics.Resources
   , PipelinePair
   , defaultMaterial
   , newCubePipelineCache
-  , loadNodes
+  , loadModel
   ) where
 
 import Data.Functor
@@ -125,8 +125,8 @@ loadImageBuffer dynImg
 
   where make format (Image {..}) = do
           imgBuffer <- newBufferFromVector imageData $ \x -> x { accessHints = (Static, Draw)
-                                                                     , accessFlags = ReadAccess
-                                                                     }
+                                                               , accessFlags = ReadAccess
+                                                               }
           let upl = uploading2D imgBuffer imageWidth imageHeight FWord8 format
           return (Tex2D imageWidth imageHeight, upl)
 
@@ -141,9 +141,9 @@ defaultImageFormat UDEPTH_COMPONENT = DEPTH_COMPONENT32F
 defaultImageFormat USTENCIL_INDEX = DEPTH32F_STENCIL8
 
 convertWrapping :: TF.WrappingMode -> Wrapping
-convertWrapping TF.ClampToEdge = Clamp
-convertWrapping TF.MirroredRepeat = MirroredRepeat
-convertWrapping TF.Repeat = Repeat
+convertWrapping TF.WMClampToEdge = Clamp
+convertWrapping TF.WMMirroredRepeat = MirroredRepeat
+convertWrapping TF.WMRepeat = Repeat
 
 convertMinFilter :: TF.MinFilter -> MinFilter
 convertMinFilter TF.MinNearest = MiNearest
@@ -186,12 +186,12 @@ loadTexture images samplers (TF.Texture {..}) = do
     TF.MagLinear -> return ()
     magFilter -> setMagFilter (convertMagFilter magFilter) tex
 
-  case fromMaybe TF.Repeat samplerWrapS of
-    TF.Repeat -> return ()
+  case fromMaybe TF.WMRepeat samplerWrapS of
+    TF.WMRepeat -> return ()
     wrapS -> setWrapS (convertWrapping wrapS) tex
 
-  case fromMaybe TF.Repeat samplerWrapT of
-    TF.Repeat -> return ()
+  case fromMaybe TF.WMRepeat samplerWrapT of
+    TF.WMRepeat -> return ()
     wrapT -> setWrapT (convertWrapping wrapT) tex
 
   return tex
@@ -230,15 +230,15 @@ textureTypeToDefinitionName BaseColorTexture = "BASE_COLOR_TEXTURE_IDX"
 primitiveToDefinitions :: LoadedMaterial -> Vector PreparedAccessor -> TF.Primitive -> Either String ShaderDefinitions
 primitiveToDefinitions (LoadedMaterial {..}) accessors (TF.Primitive {..}) = do
   let countAttributeType f = countAttributes $ mapMaybe f $ HM.keys primitiveAttributes
-      colorIndices = mapMaybe (\case TF.Color idx -> Just idx; _ -> Nothing) $ HM.keys primitiveAttributes
+      colorIndices = mapMaybe (\case TF.ATColor idx -> Just idx; _ -> Nothing) $ HM.keys primitiveAttributes
 
-  texCoordsCount <- countAttributeType $ \case TF.TexCoord idx -> Just idx; _ -> Nothing
+  texCoordsCount <- countAttributeType $ \case TF.ATTexCoord idx -> Just idx; _ -> Nothing
   colorsCount <- countAttributes colorIndices
-  jointsCount <- countAttributeType $ \case TF.Joints idx -> Just idx; _ -> Nothing
-  weightsCount <- countAttributeType $ \case TF.Weights idx -> Just idx; _ -> Nothing
+  jointsCount <- countAttributeType $ \case TF.ATJoints idx -> Just idx; _ -> Nothing
+  weightsCount <- countAttributeType $ \case TF.ATWeights idx -> Just idx; _ -> Nothing
 
-  let vecCount TF.Vec3 = Right 3
-      vecCount TF.Vec4 = Right 4
+  let vecCount TF.ATVec3 = Right 3
+      vecCount TF.ATVec4 = Right 4
       vecCount _ = Left "Invalid accessor type for color attribute"
   colorComponents <- mapM (\idx -> vecCount $ TF.accessorType $ preparedAccessor $ accessors V.! idx) colorIndices
 
@@ -247,8 +247,8 @@ primitiveToDefinitions (LoadedMaterial {..}) accessors (TF.Primitive {..}) = do
         | otherwise = Just (textureTypeToDefinitionName typ, Just $ B.pack $ show attrIdx)
 
   let definitions =
-           [("HAS_NORMALS", Nothing) | TF.Normal `HM.member` primitiveAttributes]
-        ++ [("HAS_TANGENTS", Nothing) | TF.Tangent `HM.member` primitiveAttributes]
+           [("HAS_NORMALS", Nothing) | TF.ATNormal `HM.member` primitiveAttributes]
+        ++ [("HAS_TANGENTS", Nothing) | TF.ATTangent `HM.member` primitiveAttributes]
         ++ [("HAS_ALPHA_CUTOFF", Nothing) | isJust lmatAlphaCutoff]
         ++ [ ("TEX_COORDS_COUNT", Just $ B.pack $ show texCoordsCount)
            , ("COLORS_COUNT", Just $ B.pack $ show colorsCount)
@@ -262,21 +262,21 @@ primitiveToDefinitions (LoadedMaterial {..}) accessors (TF.Primitive {..}) = do
 type PipelinePair = (PipelineMeta, LoadedPipeline)
 
 convertPrimitiveMode :: TF.PrimitiveMode -> Primitive
-convertPrimitiveMode TF.Points = Points
-convertPrimitiveMode TF.Lines = Lines
-convertPrimitiveMode TF.LineLoop = LineLoop
-convertPrimitiveMode TF.LineStrip = LineStrip
-convertPrimitiveMode TF.Triangles = Triangles
-convertPrimitiveMode TF.TriangleStrip = TriangleStrip
-convertPrimitiveMode TF.TriangleFan = TriangleFan
+convertPrimitiveMode TF.PMPoints = Points
+convertPrimitiveMode TF.PMLines = Lines
+convertPrimitiveMode TF.PMLineLoop = LineLoop
+convertPrimitiveMode TF.PMLineStrip = LineStrip
+convertPrimitiveMode TF.PMTriangles = Triangles
+convertPrimitiveMode TF.PMTriangleStrip = TriangleStrip
+convertPrimitiveMode TF.PMTriangleFan = TriangleFan
 
 convertAccessorComponentType :: TF.ComponentType -> SourceType
-convertAccessorComponentType TF.Byte = SInt8
-convertAccessorComponentType TF.UnsignedByte = SWord8
-convertAccessorComponentType TF.Short = SInt16
-convertAccessorComponentType TF.UnsignedShort = SWord16
-convertAccessorComponentType TF.UnsignedInt = SWord32
-convertAccessorComponentType TF.Float = SFloat
+convertAccessorComponentType TF.CTByte = SInt8
+convertAccessorComponentType TF.CTUnsignedByte = SWord8
+convertAccessorComponentType TF.CTShort = SInt16
+convertAccessorComponentType TF.CTUnsignedShort = SWord16
+convertAccessorComponentType TF.CTUnsignedInt = SWord32
+convertAccessorComponentType TF.CTFloat = SFloat
 
 loadMaterial :: Vector Texture -> TF.Material -> LoadedMaterial
 loadMaterial textures (TF.Material {..}) =
@@ -289,10 +289,10 @@ loadMaterial textures (TF.Material {..}) =
                  }
   where TF.PBRMetallicRoughness {..} = fromMaybe TF.defaultPBRMetallicRoughness materialPbrMetallicRoughness
         primTextures = HM.fromList $ [ (BaseColorTexture, (fromMaybe 0 $ TF.textureInfoTexCoord texInfo, textures V.! TF.textureInfoIndex texInfo)) | texInfo <- toList pbrBaseColorTexture ]
-        alphaMode = fromMaybe TF.Opaque materialAlphaMode
+        alphaMode = fromMaybe TF.AMOpaque materialAlphaMode
         alphaCutoff =
           case alphaMode of
-            TF.Mask -> Just $ fromMaybe 0.5 materialAlphaCutoff
+            TF.AMMask -> Just $ fromMaybe 0.5 materialAlphaCutoff
             _ -> Nothing
 
 defaultMaterial :: LoadedMaterial
@@ -300,7 +300,7 @@ defaultMaterial = loadMaterial V.empty TF.defaultMaterial
 
 loadPrimitive :: MonadCube m => PipelineCache PipelineMeta -> Vector LoadedMaterial -> Vector PreparedAccessor -> TF.Primitive -> StateT (IntMap PipelinePair) m (Maybe LoadedPrimitive)
 loadPrimitive plCache materials accessors primitive@(TF.Primitive {..})
-  | not (TF.Position `HM.member` primitiveAttributes) = return Nothing
+  | not (TF.ATPosition `HM.member` primitiveAttributes) = return Nothing
   | otherwise = do
       forM_ (HM.toList primitiveAttributes) $ \(typ, accessorIndex) -> do
         let accessor = accessors V.! accessorIndex
@@ -316,7 +316,7 @@ loadPrimitive plCache materials accessors primitive@(TF.Primitive {..})
       (numIndices, sourceData) <-
             case primitiveIndices of
               Nothing ->
-                let PreparedAccessor {..} = accessors V.! (primitiveAttributes HM.! TF.Position)
+                let PreparedAccessor {..} = accessors V.! (primitiveAttributes HM.! TF.ATPosition)
                     src = Primitives { firstIndex = 0 }
                 in return (TF.accessorCount preparedAccessor, src)
               Just indicesIndex -> do
@@ -324,16 +324,16 @@ loadPrimitive plCache materials accessors primitive@(TF.Primitive {..})
                 unless (preparedStride == 0) $ fail "Strides for indice accessors are not supported"
                 indicesType <-
                   case TF.accessorComponentType preparedAccessor of
-                    TF.UnsignedByte -> return IWord8
-                    TF.UnsignedShort -> return IWord16
-                    TF.UnsignedInt -> return IWord32
+                    TF.CTUnsignedByte -> return IWord8
+                    TF.CTUnsignedShort -> return IWord16
+                    TF.CTUnsignedInt -> return IWord32
                     invalidTyp -> fail $ [i|Invalid accessor #{indicesIndex} type for indices: #{invalidTyp}|]
                 let src = PrimitivesWithIndices { indexBuffer = preparedBuffer
                                                 , indexOffset = preparedOffset
                                                 , indexType = indicesType
                                                 }
                 return (TF.accessorCount preparedAccessor, src)
-      let primDrawCommand = drawCommand { primitiveType = convertPrimitiveMode $ fromMaybe TF.Triangles primitiveMode
+      let primDrawCommand = drawCommand { primitiveType = convertPrimitiveMode $ fromMaybe TF.PMTriangles primitiveMode
                                         , primitivesVAO
                                         , numIndices
                                         , sourceData
@@ -366,19 +366,19 @@ loadMesh plCache materials accessors (TF.Mesh {..}) = do
   else
     return $ Just $ LoadedMesh {..}
 
-data LoadedNodes = LoadedNodes { loadedNodes :: HashMap NodeName LoadedNodeTree
+data LoadedModel = LoadedModel { loadedNodes :: HashMap NodeName LoadedNodeTree
                                , loadedPipelines :: IntMap PipelinePair
                                , loadedMaterials :: IntMap LoadedMaterial
                                }
 
-instance Semigroup LoadedNodes where
-  a <> b = LoadedNodes { loadedNodes = HM.union (loadedNodes a) (loadedNodes b)
+instance Semigroup LoadedModel where
+  a <> b = LoadedModel { loadedNodes = HM.union (loadedNodes a) (loadedNodes b)
                        , loadedPipelines = IM.union (loadedPipelines a) (loadedPipelines b)
                        , loadedMaterials = IM.union (loadedMaterials a) (loadedMaterials b)
                        }
 
-instance Monoid LoadedNodes where
-  mempty = LoadedNodes { loadedNodes = HM.empty
+instance Monoid LoadedModel where
+  mempty = LoadedModel { loadedNodes = HM.empty
                        , loadedPipelines = IM.empty
                        , loadedMaterials = IM.empty
                        }
@@ -404,13 +404,13 @@ prefixedVariable prefix constr = do
 
 attributeVariableParser :: Atto.Parser TF.AttributeType
 attributeVariableParser =
-      (Atto.string "attrPosition" $> TF.Position)
-  <|> (Atto.string "attrNormal" $> TF.Normal)
-  <|> (Atto.string "attrTangent" $> TF.Tangent)
-  <|> prefixedVariable "attrTexCoord" TF.TexCoord
-  <|> prefixedVariable "attrColor" TF.Color
-  <|> prefixedVariable "attrJoint" TF.Joints
-  <|> prefixedVariable "attrWeight" TF.Weights
+      (Atto.string "attrPosition" $> TF.ATPosition)
+  <|> (Atto.string "attrNormal" $> TF.ATNormal)
+  <|> (Atto.string "attrTangent" $> TF.ATTangent)
+  <|> prefixedVariable "attrTexCoord" TF.ATTexCoord
+  <|> prefixedVariable "attrColor" TF.ATColor
+  <|> prefixedVariable "attrJoint" TF.ATJoints
+  <|> prefixedVariable "attrWeight" TF.ATWeights
 
 getPipelineAttributes :: HashMap AttributeName (AttributeLocation, AttributeInfo) -> Either String (HashMap TF.AttributeType AttributeLocation)
 getPipelineAttributes loadedAttributes = HM.fromList <$> mapM mapAttribute (HM.elems loadedAttributes)
@@ -458,8 +458,8 @@ getPipelineMeta (LoadedPipeline {..}) = do
 newCubePipelineCache :: MonadCube m => ShaderWithIncludes -> ShaderWithIncludes -> m (PipelineCache PipelineMeta)
 newCubePipelineCache = newPipelineCache getPipelineMeta
 
-loadNodes :: forall m. MonadCube m => PipelineCache PipelineMeta -> TF.BoundGlTF -> m LoadedNodes
-loadNodes plCache (TF.BoundGlTF {..}) = do
+loadModel :: forall m. MonadCube m => PipelineCache PipelineMeta -> TF.BoundGlTF -> m LoadedModel
+loadModel plCache (TF.BoundGlTF {..}) = do
   -- We filter buffer views, because we process those used for images separately.
   let neededBufferViews = S.fromList $ mapMaybe TF.accessorBufferView $ V.toList $ fromMaybe V.empty $ TF.gltfAccessors boundGltf
       runLoadBuffer idx = do
@@ -501,7 +501,7 @@ loadNodes plCache (TF.BoundGlTF {..}) = do
       Left e -> fail $ "Failed to build node tree: " ++ e
       Right r -> return r
   (nodes, loadedPipelines) <- flip runStateT IM.empty $ mapM loadTopLevel $ V.toList treeNodes
-  return LoadedNodes { loadedNodes = HM.fromList nodes
+  return LoadedModel { loadedNodes = HM.fromList nodes
                      , loadedMaterials = IM.fromList $ zip [0..] $ V.toList materials
                      , loadedPipelines
                      }

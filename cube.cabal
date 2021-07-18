@@ -17,8 +17,8 @@ library
       Cube.Graphics.Camera
       Cube.Graphics.Framerate
       Cube.Graphics.Geometry
+      Cube.Graphics.Model
       Cube.Graphics.Render
-      Cube.Graphics.Resources
       Cube.Graphics.Screen
       Cube.Graphics.ShadersCache
       Cube.Graphics.TRS

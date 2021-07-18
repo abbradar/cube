@@ -6,6 +6,7 @@ module Data.GlTF.Types
   ( Asset(..)
   , GlTF(..)
   , Version(..)
+  , ExtrasMap
   , versionText
   , supportedVersion
   , assetIsSupported
@@ -50,6 +51,13 @@ module Data.GlTF.Types
   , defaultMaterial
   , ImageIndex
   , Image(..)
+  , Animation(..)
+  , Channel(..)
+  , Target(..)
+  , TargetPath(..)
+  , AnimationSamplerInterpolation(..)
+  , AnimationSampler(..)
+  , AnimationSamplerIndex
   ) where
 
 import Data.Functor
@@ -87,6 +95,8 @@ supportedVersion = Version 2 0
 
 type Extension = Text
 
+type ExtrasMap = HashMap Text Value
+
 data Version = Version { major :: Int
                        , minor :: Int
                        }
@@ -108,7 +118,7 @@ data Asset = Asset { assetVersion :: Version
                    , assetGenerator :: Maybe Text
                    , assetCopyright :: Maybe Text
                    , assetMinVersion :: Maybe Version
-                   , assetExtras :: Maybe (HashMap Text Value)
+                   , assetExtras :: Maybe ExtrasMap
                    }
            deriving (Show, Generic)
 
@@ -132,7 +142,7 @@ data GlTF = GlTF { gltfAsset :: Asset
                  , gltfTextures :: Maybe (Vector Texture)
                  , gltfImages :: Maybe (Vector Image)
                  , gltfMaterials :: Maybe (Vector Material)
-                 , gltfExtras :: Maybe (HashMap Text Value)
+                 , gltfExtras :: Maybe ExtrasMap
                  }
           deriving (Show, Generic)
 
@@ -144,7 +154,7 @@ type BufferIndex = Int
 data Buffer = Buffer { bufferName :: Maybe Text
                      , bufferUri :: Maybe Text
                      , bufferByteLength :: Int
-                     , bufferExtras :: Maybe (HashMap Text Value)
+                     , bufferExtras :: Maybe ExtrasMap
                      }
               deriving (Show, Generic)
 
@@ -158,7 +168,7 @@ data BufferView = BufferView { viewName :: Maybe Text
                              , viewByteOffset :: Maybe Int
                              , viewByteLength :: Int
                              , viewByteStride :: Maybe Int
-                             , viewExtras :: Maybe (HashMap Text Value)
+                             , viewExtras :: Maybe ExtrasMap
                              }
                 deriving (Show, Generic)
 
@@ -167,17 +177,17 @@ instance FromJSON BufferView where
 
 type AttributeSubIndex = Int
 
-data AttributeType = Position | Normal | Tangent | TexCoord AttributeSubIndex | Color AttributeSubIndex | Joints AttributeSubIndex | Weights AttributeSubIndex
+data AttributeType = ATPosition | ATNormal | ATTangent | ATTexCoord AttributeSubIndex | ATColor AttributeSubIndex | ATJoints AttributeSubIndex | ATWeights AttributeSubIndex
                    deriving (Show, Eq, Ord, Generic, Hashable)
 
 attributeIsIntegral :: AttributeType -> Bool
-attributeIsIntegral Position = False
-attributeIsIntegral Normal = False
-attributeIsIntegral Tangent = False
-attributeIsIntegral (TexCoord _) = False
-attributeIsIntegral (Color _) = False
-attributeIsIntegral (Joints _) = True
-attributeIsIntegral (Weights _) = False
+attributeIsIntegral ATPosition = False
+attributeIsIntegral ATNormal = False
+attributeIsIntegral ATTangent = False
+attributeIsIntegral (ATTexCoord _) = False
+attributeIsIntegral (ATColor _) = False
+attributeIsIntegral (ATJoints _) = True
+attributeIsIntegral (ATWeights _) = False
 
 prefixedAttribute :: Text -> (Int -> AttributeType) -> Atto.Parser AttributeType
 prefixedAttribute prefix constr = do
@@ -188,13 +198,13 @@ prefixedAttribute prefix constr = do
 
 attributeTypeParser :: Atto.Parser AttributeType
 attributeTypeParser =
-      (Atto.string "POSITION" $> Position)
-  <|> (Atto.string "NORMAL" $> Normal)
-  <|> (Atto.string "TANGENT" $> Tangent)
-  <|> prefixedAttribute "TEXCOORD" TexCoord
-  <|> prefixedAttribute "COLOR" Color
-  <|> prefixedAttribute "JOINTS" Joints
-  <|> prefixedAttribute "WEIGHTS" Weights
+      (Atto.string "POSITION" $> ATPosition)
+  <|> (Atto.string "NORMAL" $> ATNormal)
+  <|> (Atto.string "TANGENT" $> ATTangent)
+  <|> prefixedAttribute "TEXCOORD" ATTexCoord
+  <|> prefixedAttribute "COLOR" ATColor
+  <|> prefixedAttribute "JOINTS" ATJoints
+  <|> prefixedAttribute "WEIGHTS" ATWeights
 
 parseAttributeType :: Text -> JSON.Parser AttributeType
 parseAttributeType name =
@@ -208,20 +218,20 @@ instance FromJSON AttributeType where
 instance FromJSONKey AttributeType where
   fromJSONKey = FromJSONKeyTextParser parseAttributeType
 
-data PrimitiveMode = Points | Lines | LineLoop | LineStrip | Triangles | TriangleStrip | TriangleFan
+data PrimitiveMode = PMPoints | PMLines | PMLineLoop | PMLineStrip | PMTriangles | PMTriangleStrip | PMTriangleFan
                    deriving (Show, Eq, Ord, Bounded, Enum, Generic, Hashable)
 
 instance FromJSON PrimitiveMode where
   parseJSON = withScientific "PrimitiveMode" $ \case
     (Scientific.toBoundedInteger -> Just (typ :: Int)) ->
       case typ of
-        0 -> return Points
-        1 -> return Lines
-        2 -> return LineLoop
-        3 -> return LineStrip
-        4 -> return Triangles
-        5 -> return TriangleStrip
-        6 -> return TriangleFan
+        0 -> return PMPoints
+        1 -> return PMLines
+        2 -> return PMLineLoop
+        3 -> return PMLineStrip
+        4 -> return PMTriangles
+        5 -> return PMTriangleStrip
+        6 -> return PMTriangleFan
         _ -> fail $ "Invalid PrimitiveMode value: " ++ show typ
     int -> fail $ "Invalid PrimitiveMode value: " ++ show int
 
@@ -229,7 +239,7 @@ data Primitive = Primitive { primitiveAttributes :: HashMap AttributeType Access
                            , primitiveIndices :: Maybe AccessorIndex
                            , primitiveMaterial :: Maybe MaterialIndex
                            , primitiveMode :: Maybe PrimitiveMode
-                           , primitiveExtras :: Maybe (HashMap Text Value)
+                           , primitiveExtras :: Maybe ExtrasMap
                            }
                deriving (Show, Generic)
 
@@ -240,7 +250,7 @@ type MeshIndex = Int
 
 data Mesh = Mesh { meshName :: Maybe Text
                  , meshPrimitives :: Vector Primitive
-                 , meshExtras :: Maybe (HashMap Text Value)
+                 , meshExtras :: Maybe ExtrasMap
                  }
           deriving (Show, Generic)
 
@@ -256,7 +266,7 @@ data Node = Node { nodeName :: Maybe Text
                  , nodeTranslation :: Maybe (V3 Float)
                  , nodeMatrix :: Maybe (M44 Float)
                  , nodeChildren :: Maybe (Vector NodeIndex)
-                 , nodeExtras :: Maybe (HashMap Text Value)
+                 , nodeExtras :: Maybe ExtrasMap
                  }
           deriving (Show, Generic)
 
@@ -291,59 +301,59 @@ instance FromJSON Node where
 
 data Scene = Scene { sceneName :: Maybe Text
                    , sceneNodes :: Set NodeIndex
-                   , sceneExtras :: Maybe (HashMap Text Value)
+                   , sceneExtras :: Maybe ExtrasMap
                    }
            deriving (Show, Generic)
 
 instance FromJSON Scene where
   parseJSON = genericParseJSON $ gltfOptions "scene"
 
-data ComponentType = Byte | UnsignedByte | Short | UnsignedShort | UnsignedInt | Float
+data ComponentType = CTByte | CTUnsignedByte | CTShort | CTUnsignedShort | CTUnsignedInt | CTFloat
                    deriving (Show, Eq, Ord, Bounded, Enum, Generic, Hashable)
 
 instance FromJSON ComponentType where
   parseJSON = withScientific "ComponentType" $ \case
     (Scientific.toBoundedInteger -> Just (typ :: Int)) ->
       case typ of
-        5120 -> return Byte
-        5121 -> return UnsignedByte
-        5122 -> return Short
-        5123 -> return UnsignedShort
-        5125 -> return UnsignedInt
-        5126 -> return Float
+        5120 -> return CTByte
+        5121 -> return CTUnsignedByte
+        5122 -> return CTShort
+        5123 -> return CTUnsignedShort
+        5125 -> return CTUnsignedInt
+        5126 -> return CTFloat
         _ -> fail $ "Invalid ComponentType value: " ++ show typ
     int -> fail $ "Invalid ComponentType value: " ++ show int
 
 componentSize :: ComponentType -> Int
-componentSize Byte = 1
-componentSize UnsignedByte = 1
-componentSize Short = 2
-componentSize UnsignedShort = 2
-componentSize UnsignedInt = 4
-componentSize Float = 4
+componentSize CTByte = 1
+componentSize CTUnsignedByte = 1
+componentSize CTShort = 2
+componentSize CTUnsignedShort = 2
+componentSize CTUnsignedInt = 4
+componentSize CTFloat = 4
 
 componentIsInteger :: ComponentType -> Bool
-componentIsInteger Byte = True
-componentIsInteger UnsignedByte = True
-componentIsInteger Short = True
-componentIsInteger UnsignedShort = True
-componentIsInteger UnsignedInt = True
-componentIsInteger Float = False
+componentIsInteger CTByte = True
+componentIsInteger CTUnsignedByte = True
+componentIsInteger CTShort = True
+componentIsInteger CTUnsignedShort = True
+componentIsInteger CTUnsignedInt = True
+componentIsInteger CTFloat = False
 
-data AccessorType = Scalar | Vec2 | Vec3 | Vec4 | Mat2 | Mat3 | Mat4
+data AccessorType = ATScalar | ATVec2 | ATVec3 | ATVec4 | ATMat2 | ATMat3 | ATMat4
                   deriving (Show, Eq, Ord, Bounded, Enum, Generic, Hashable)
 
 accessorComponentsNumber :: AccessorType -> Int
-accessorComponentsNumber Scalar = 1
-accessorComponentsNumber Vec2 = 2
-accessorComponentsNumber Vec3 = 3
-accessorComponentsNumber Vec4 = 4
-accessorComponentsNumber Mat2 = 2 * 2
-accessorComponentsNumber Mat3 = 3 * 3
-accessorComponentsNumber Mat4 = 4 * 4
+accessorComponentsNumber ATScalar = 1
+accessorComponentsNumber ATVec2 = 2
+accessorComponentsNumber ATVec3 = 3
+accessorComponentsNumber ATVec4 = 4
+accessorComponentsNumber ATMat2 = 2 * 2
+accessorComponentsNumber ATMat3 = 3 * 3
+accessorComponentsNumber ATMat4 = 4 * 4
 
 instance FromJSON AccessorType where
-  parseJSON = genericParseJSON $ defaultOptions { constructorTagModifier = map toUpper
+  parseJSON = genericParseJSON $ defaultOptions { constructorTagModifier = map toUpper . removePrefix "AT"
                                                 }
 
 type AccessorIndex = Int
@@ -358,27 +368,27 @@ data Accessor = Accessor { accessorName :: Maybe Text
                          , accessorMax :: Maybe (Vector Float)
                          , accessorMin :: Maybe (Vector Float)
                          , accessorSparse :: Maybe () -- So that we can detect and fail on sparse accessors.
-                         , accessorExtras :: Maybe (HashMap Text Value)
+                         , accessorExtras :: Maybe ExtrasMap
                          }
               deriving (Show, Generic)
 
 
 floatOrNormalized :: Accessor -> Bool
-floatOrNormalized (Accessor { accessorComponentType = Float }) = True
-floatOrNormalized (Accessor { accessorComponentType = UnsignedByte, accessorNormalized = Just True }) = True
-floatOrNormalized (Accessor { accessorComponentType = UnsignedShort, accessorNormalized = Just True }) = True
+floatOrNormalized (Accessor { accessorComponentType = CTFloat }) = True
+floatOrNormalized (Accessor { accessorComponentType = CTUnsignedByte, accessorNormalized = Just True }) = True
+floatOrNormalized (Accessor { accessorComponentType = CTUnsignedShort, accessorNormalized = Just True }) = True
 floatOrNormalized _ = False
 
 accessorIsValid :: AttributeType -> Accessor -> Bool
-accessorIsValid Position (Accessor { accessorType = Vec3, accessorComponentType = Float }) = True
-accessorIsValid Normal (Accessor { accessorType = Vec3, accessorComponentType = Float }) = True
-accessorIsValid Tangent (Accessor { accessorType = Vec4, accessorComponentType = Float }) = True
-accessorIsValid (TexCoord _) accessor@(Accessor { accessorType = Vec2 }) = floatOrNormalized accessor
-accessorIsValid (Color _) accessor@(Accessor { accessorType = Vec3 }) = floatOrNormalized accessor
-accessorIsValid (Color _) accessor@(Accessor { accessorType = Vec4 }) = floatOrNormalized accessor
-accessorIsValid (Joints _) (Accessor { accessorType = Vec4, accessorComponentType = UnsignedByte, accessorNormalized = (fromMaybe False -> False) }) = True
-accessorIsValid (Joints _) (Accessor { accessorType = Vec4, accessorComponentType = UnsignedShort, accessorNormalized = (fromMaybe False -> False) }) = True
-accessorIsValid (Weights _) accessor@(Accessor { accessorType = Vec4 }) = floatOrNormalized accessor
+accessorIsValid ATPosition (Accessor { accessorType = ATVec3, accessorComponentType = CTFloat }) = True
+accessorIsValid ATNormal (Accessor { accessorType = ATVec3, accessorComponentType = CTFloat }) = True
+accessorIsValid ATTangent (Accessor { accessorType = ATVec4, accessorComponentType = CTFloat }) = True
+accessorIsValid (ATTexCoord _) accessor@(Accessor { accessorType = ATVec2 }) = floatOrNormalized accessor
+accessorIsValid (ATColor _) accessor@(Accessor { accessorType = ATVec3 }) = floatOrNormalized accessor
+accessorIsValid (ATColor _) accessor@(Accessor { accessorType = ATVec4 }) = floatOrNormalized accessor
+accessorIsValid (ATJoints _) (Accessor { accessorType = ATVec4, accessorComponentType = CTUnsignedByte, accessorNormalized = (fromMaybe False -> False) }) = True
+accessorIsValid (ATJoints _) (Accessor { accessorType = ATVec4, accessorComponentType = CTUnsignedShort, accessorNormalized = (fromMaybe False -> False) }) = True
+accessorIsValid (ATWeights _) accessor@(Accessor { accessorType = ATVec4 }) = floatOrNormalized accessor
 accessorIsValid _ _ = False
 
 instance FromJSON Accessor where
@@ -389,7 +399,7 @@ type TextureIndex = Int
 data Texture = Texture { textureName :: Maybe Text
                        , textureSampler :: Maybe SamplerIndex
                        , textureSource :: Maybe ImageIndex
-                       , textureExtras :: Maybe (HashMap Text Value)
+                       , textureExtras :: Maybe ExtrasMap
                        }
              deriving (Show, Generic)
 
@@ -424,16 +434,16 @@ instance FromJSON MinFilter where
         _ -> fail $ "Invalid MinFilter value: " ++ show typ
     int -> fail $ "Invalid MinFilter value: " ++ show int
 
-data WrappingMode = ClampToEdge | MirroredRepeat | Repeat
+data WrappingMode = WMClampToEdge | WMMirroredRepeat | WMRepeat
                deriving (Show, Eq, Ord, Bounded, Enum, Generic, Hashable)
 
 instance FromJSON WrappingMode where
   parseJSON = withScientific "WrappingMode" $ \case
     (Scientific.toBoundedInteger -> Just (typ :: Int)) ->
       case typ of
-        33071 -> return ClampToEdge
-        33648 -> return MirroredRepeat
-        10497 -> return Repeat
+        33071 -> return WMClampToEdge
+        33648 -> return WMMirroredRepeat
+        10497 -> return WMRepeat
         _ -> fail $ "Invalid WrappingMode value: " ++ show typ
     int -> fail $ "Invalid WrappingMode value: " ++ show int
 
@@ -444,7 +454,7 @@ data Sampler = Sampler { samplerName :: Maybe Text
                        , samplerMinFilter :: Maybe MinFilter
                        , samplerWrapS :: Maybe WrappingMode
                        , samplerWrapT :: Maybe WrappingMode
-                       , samplerExtras :: Maybe (HashMap Text Value)
+                       , samplerExtras :: Maybe ExtrasMap
                        }
              deriving (Show, Generic)
 
@@ -460,11 +470,11 @@ defaultSampler = Sampler { samplerName = Nothing
                          , samplerExtras = Nothing
                          }
 
-data AlphaMode = Opaque | Mask | Blend
+data AlphaMode = AMOpaque | AMMask | AMBlend
                 deriving (Show, Eq, Ord, Bounded, Enum, Generic, Hashable)
 
 instance FromJSON AlphaMode where
-  parseJSON = genericParseJSON $ defaultOptions { constructorTagModifier = map toUpper
+  parseJSON = genericParseJSON $ defaultOptions { constructorTagModifier = map toUpper . removePrefix "AM"
                                                 }
 
 data PBRMetallicRoughness = PBRMetallicRoughness { pbrBaseColorFactor :: Maybe (V4 Float)
@@ -489,7 +499,7 @@ defaultPBRMetallicRoughness = PBRMetallicRoughness { pbrBaseColorFactor = Nothin
 data OcclusionTextureInfo = OcclusionTextureInfo { occlusionIndex :: TextureIndex
                                                  , occlusionTexCoord :: Maybe Int
                                                  , occlusionStrength :: Maybe Float
-                                                 , occlusionExtras :: Maybe (HashMap Text Value)
+                                                 , occlusionExtras :: Maybe ExtrasMap
                                                  }
                           deriving (Show, Generic)
 
@@ -498,7 +508,7 @@ instance FromJSON OcclusionTextureInfo where
 
 data TextureInfo = TextureInfo { textureInfoIndex :: TextureIndex
                                , textureInfoTexCoord :: Maybe Int
-                               , textureInfoExtras :: Maybe (HashMap Text Value)
+                               , textureInfoExtras :: Maybe ExtrasMap
                                }
                  deriving (Show, Generic)
 
@@ -516,7 +526,7 @@ data Material = Material { materialName :: Maybe Text
                          , materialAlphaMode :: Maybe AlphaMode
                          , materialAlphaCutoff :: Maybe Float
                          , materialDoubleSided :: Maybe Bool
-                         , materialExtras :: Maybe (HashMap Text Value)
+                         , materialExtras :: Maybe ExtrasMap
                          }
               deriving (Show, Generic)
 
@@ -539,7 +549,7 @@ instance FromJSON Material where
 data NormalTextureInfo = NormalTextureInfo { normalTextureIndex :: TextureIndex
                                            , normalTextureTexCoord :: Maybe Int
                                            , normalTextureScale :: Maybe Float
-                                           , normalTextureExtras :: Maybe (HashMap Text Value)
+                                           , normalTextureExtras :: Maybe ExtrasMap
                                            }
                        deriving (Show, Generic)
 
@@ -552,9 +562,63 @@ data Image = Image { imageName :: Maybe Text
                    , imageUri :: Maybe Text
                    , imageMimeType :: Maybe Text
                    , imageBufferView :: Maybe BufferViewIndex
-                   , imageExtras :: Maybe (HashMap Text Value)
+                   , imageExtras :: Maybe ExtrasMap
                    }
            deriving (Show, Generic)
 
 instance FromJSON Image where
   parseJSON = genericParseJSON $ gltfOptions "image"
+
+data Animation = Animation { animationChannels :: Vector Channel
+                           , animationSamplers :: Vector AnimationSampler
+                           , animationName :: Maybe Text
+                           , animationExtras :: Maybe ExtrasMap
+                           }
+               deriving (Show, Generic)
+
+instance FromJSON Animation where
+  parseJSON = genericParseJSON $ gltfOptions "animation"
+
+data Channel = Channel { channelSampler :: AnimationSamplerIndex
+                       , channelTarget :: Target
+                       , channelExtras :: Maybe ExtrasMap
+                       }
+             deriving (Show, Generic)
+
+instance FromJSON Channel where
+  parseJSON = genericParseJSON $ gltfOptions "channel"
+
+data TargetPath = TPTranslation | TPRotation | TPScale | TPWeights
+                deriving (Show, Eq, Ord, Bounded, Enum, Generic, Hashable)
+
+instance FromJSON TargetPath where
+  parseJSON = genericParseJSON $ defaultOptions { constructorTagModifier = map toUpper . removePrefix "TP"
+                                                }
+
+data Target = Target { targetNode :: Maybe NodeIndex
+                     , targetPath :: TargetPath
+                     , targetExtras :: Maybe ExtrasMap
+                     }
+             deriving (Show, Generic)
+
+instance FromJSON Target where
+  parseJSON = genericParseJSON $ gltfOptions "target"
+
+type AnimationSamplerIndex = Int
+
+data AnimationSamplerInterpolation = ASILinear | ASIStep | ASICubicSpline
+                                   deriving (Show, Eq, Ord, Bounded, Enum, Generic, Hashable)
+
+instance FromJSON AnimationSamplerInterpolation where
+  parseJSON = genericParseJSON $ defaultOptions { constructorTagModifier = map toUpper . removePrefix "ASI"
+                                                }
+
+data AnimationSampler = AnimationSampler { animationSamplerInput :: AccessorIndex
+                                         , animationSamplerInterpolation :: Maybe AnimationSamplerInterpolation
+                                         , animationSamplerOutput :: AccessorIndex
+                                         , animationSamplerExtras :: Maybe ExtrasMap
+                                         }
+                      deriving (Show, Generic)
+
+instance FromJSON AnimationSampler where
+  parseJSON = genericParseJSON $ gltfOptions "animationSampler"
