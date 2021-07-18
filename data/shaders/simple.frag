@@ -1,8 +1,12 @@
 #version 330 core
 
+#include "tonemapping.glsl"
+
 out vec4 fragColor;
 
 in vec3 vertPosition;
+
+uniform vec3 uniCamera;
 
 #if TEX_COORDS_COUNT >= 1
 in vec2 vertTexCoord_0;
@@ -28,23 +32,29 @@ in vec4 vertColor;
 uniform vec4 uniBaseColorFactor;
 
 #ifdef BASE_COLOR_TEXTURE_IDX
-#define BASE_COLOR_TEXTURE_COORD (vertTexCoord_ ## BASE_COLOR_TEXTURE_IDX)
+#define MAKE_BASE_COLOR_TEXTURE_COORD(idx) vertTexCoord_##idx
+#define BASE_COLOR_TEXTURE_COORD MAKE_BASE_COLOR_TEXTURE_COORD(BASE_COLOR_TEXTURE_IDX)
 
 uniform sampler2D uniBaseColorTexture;
 #endif
 
-void main()
-{
-#if COLOR_0_COMPONENTS == 3
-    fragColor = vec4(vertColor, 1.0);
-#elif COLOR_0_COMPONENTS == 4
-    fragColor = vertColor;
-#else
-    fragColor = vec4(1.0, 1.0, 1.0, 1.0);
+#ifdef HAS_ALPHA_CUTOFF
+uniform float uniAlphaCutoff;
 #endif
 
+void main()
+{
+    vec4 color = uniBaseColorFactor;
+
 #ifdef BASE_COLOR_TEXTURE_IDX
-    //fragColor = vec4(vertTexCoord_0.x, 0, 0, 1);
-    fragColor = vec4(texture(uniBaseColorTexture, vertTexCoord_0).rgb, uniBaseColorFactor.a);
+    color *= sRGBToLinear(texture(uniBaseColorTexture, BASE_COLOR_TEXTURE_COORD));
 #endif
+
+#ifdef HAS_ALPHA_CUTOFF
+    // Late discard to avaoid samplig artifacts. See https://github.com/KhronosGroup/glTF-Sample-Viewer/issues/267
+    if (color.a < uniAlphaCutoff)
+        discard;
+#endif
+
+    fragColor = color;
 }

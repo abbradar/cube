@@ -77,6 +77,7 @@ data LoadedMaterial = LoadedMaterial { lmatTextures :: HashMap TextureType (TF.A
                                      , lmatMetallicFactor :: Float
                                      , lmatRoughnessFactor :: Float
                                      , lmatDoubleSided :: Bool
+                                     , lmatAlphaCutoff :: Maybe Float
                                      }
 
 nodeTransform :: TF.Node -> Either String TRSF
@@ -248,6 +249,7 @@ primitiveToDefinitions (LoadedMaterial {..}) accessors (TF.Primitive {..}) = do
   let definitions =
            [("HAS_NORMALS", Nothing) | TF.Normal `HM.member` primitiveAttributes]
         ++ [("HAS_TANGENTS", Nothing) | TF.Tangent `HM.member` primitiveAttributes]
+        ++ [("HAS_ALPHA_CUTOFF", Nothing) | isJust lmatAlphaCutoff]
         ++ [ ("TEX_COORDS_COUNT", Just $ B.pack $ show texCoordsCount)
            , ("COLORS_COUNT", Just $ B.pack $ show colorsCount)
            , ("JOINTS_COUNT", Just $ B.pack $ show jointsCount)
@@ -283,9 +285,15 @@ loadMaterial textures (TF.Material {..}) =
                  , lmatMetallicFactor = fromMaybe 1 pbrMetallicFactor
                  , lmatRoughnessFactor = fromMaybe 1 pbrRoughnessFactor
                  , lmatDoubleSided = fromMaybe False materialDoubleSided
+                 , lmatAlphaCutoff = alphaCutoff
                  }
   where TF.PBRMetallicRoughness {..} = fromMaybe TF.defaultPBRMetallicRoughness materialPbrMetallicRoughness
         primTextures = HM.fromList $ [ (BaseColorTexture, (fromMaybe 0 $ TF.textureInfoTexCoord texInfo, textures V.! TF.textureInfoIndex texInfo)) | texInfo <- toList pbrBaseColorTexture ]
+        alphaMode = fromMaybe TF.Opaque materialAlphaMode
+        alphaCutoff =
+          case alphaMode of
+            TF.Mask -> Just $ fromMaybe 0.5 materialAlphaCutoff
+            _ -> Nothing
 
 defaultMaterial :: LoadedMaterial
 defaultMaterial = loadMaterial V.empty TF.defaultMaterial
@@ -382,6 +390,8 @@ data PipelineMeta = PipelineMeta { pipelineAttributes :: HashMap TF.AttributeTyp
                                  , pipelineBaseColorFactor :: Maybe UniformLocation
                                  , pipelineMetallicFactor :: Maybe UniformLocation
                                  , pipelineRoughnessFactor :: Maybe UniformLocation
+                                 , pipelineAlphaCutoff :: Maybe UniformLocation
+                                 , pipelineCamera :: Maybe UniformLocation
                                  , pipelineTextures :: HashMap TextureType UniformLocation
                                  }
                   deriving (Show, Eq)
@@ -424,6 +434,8 @@ getPipelineUniforms loadedUniforms = mapM mapAttribute (HM.elems loadedUniforms)
               "uniBaseColorTexture" -> return $ \x -> x { pipelineTextures = HM.insert BaseColorTexture idx $ pipelineTextures x }
               "uniMetallicFactor" -> return $ \x -> x { pipelineMetallicFactor = Just idx }
               "uniRoughnessFactor" -> return $ \x -> x { pipelineRoughnessFactor = Just idx }
+              "uniAlphaCutoff" -> return $ \x -> x { pipelineAlphaCutoff = Just idx }
+              "uniCamera" -> return $ \x -> x { pipelineCamera = Just idx }
               _ -> Left [i|Unknown uniform #{uniformName}|]
 
 getPipelineMeta :: LoadedPipeline -> Either String PipelineMeta
@@ -437,6 +449,8 @@ getPipelineMeta (LoadedPipeline {..}) = do
                                  , pipelineBaseColorFactor = Nothing
                                  , pipelineMetallicFactor = Nothing
                                  , pipelineRoughnessFactor = Nothing
+                                 , pipelineAlphaCutoff = Nothing
+                                 , pipelineCamera = Nothing
                                  , pipelineTextures = HM.empty
                                  }
   return $ foldr ($) initialMeta plUniformUpdates

@@ -40,6 +40,7 @@ module Data.GlTF.Types
   , Sampler(..)
   , defaultSampler
   , NormalTextureInfo(..)
+  , AlphaMode(..)
   , PBRMetallicRoughness(..)
   , defaultPBRMetallicRoughness
   , TextureInfo(..)

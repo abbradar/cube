@@ -35,18 +35,14 @@ data PreparedMesh = PreparedMesh { preparedModelMatrix :: MF44
                                  }
 
 data PreparedMaterialMeshes = PreparedMaterialMeshes { preparedTextures :: IntMap Texture
-                                                     , preparedBaseColorFactor :: V4 Float
-                                                     , preparedMetallicFactor :: Float
-                                                     , preparedRoughnessFactor :: Float
+                                                     , preparedMaterial :: LoadedMaterial
                                                      , preparedFragmentPassTests :: FragmentPassTests
                                                      , preparedMeshes :: [PreparedMesh]
                                                      }
 
 instance Semigroup PreparedMaterialMeshes where
   a <> b = PreparedMaterialMeshes { preparedTextures = preparedTextures b
-                                  , preparedBaseColorFactor = preparedBaseColorFactor b
-                                  , preparedMetallicFactor = preparedMetallicFactor b
-                                  , preparedRoughnessFactor = preparedRoughnessFactor b
+                                  , preparedMaterial = preparedMaterial b
                                   , preparedFragmentPassTests = preparedFragmentPassTests b
                                   , preparedMeshes = preparedMeshes a ++ preparedMeshes b
                                   }
@@ -78,9 +74,7 @@ prepareLoadedNodes nodes = flip execState IM.empty $ mapM_ (go mempty) $ loadedN
                   makeMaterialMesh :: Maybe MaterialId -> [DrawCommand] -> PreparedMaterialMeshes
                   makeMaterialMesh matId drawCommands =
                     PreparedMaterialMeshes { preparedTextures = IM.fromList $ map (\(typ, (_subIdx, tex)) -> (fromEnum typ, tex)) $ HM.toList lmatTextures
-                                           , preparedBaseColorFactor = lmatBaseColorFactor
-                                           , preparedMetallicFactor = lmatMetallicFactor
-                                           , preparedRoughnessFactor = lmatRoughnessFactor
+                                           , preparedMaterial = mat
                                            , preparedFragmentPassTests = defaultFragmentPassTests { cullFace = if lmatDoubleSided then NoCulling else Back
                                                                                                   , writeDepth = True
                                                                                                   , depthTest = Just Less
@@ -89,7 +83,7 @@ prepareLoadedNodes nodes = flip execState IM.empty $ mapM_ (go mempty) $ loadedN
                                                                             , preparedDrawCommands = drawCommands
                                                                             }]
                                            }
-                            where LoadedMaterial {..} =
+                            where mat@LoadedMaterial {..} =
                                     case matId of
                                       Nothing -> defaultMaterial
                                       Just i -> loadedMaterials nodes IM.! i
@@ -124,15 +118,16 @@ drawPreparedNodesGeneric setFirstPipeline (Screen {..}) camera = foldM_ drawPipe
                   Just idx -> setUniform value idx preparedPipeline
 
           setPipelineUniform pipelineViewProjectionMatrix $ transpose viewProjectionMatrix
+          setPipelineUniform pipelineCamera $ cameraPosition camera
 
           forM_ (HM.toList $ pipelineTextures preparedMeta) $ \(texType, idx) ->
             setUniform (fromEnum texType) idx preparedPipeline
 
           forM_ preparedMaterialMeshes $ \PreparedMaterialMeshes {..} -> do
             setTextureBindings preparedTextures
-            setPipelineUniform pipelineBaseColorFactor preparedBaseColorFactor
-            setPipelineUniform pipelineMetallicFactor preparedMetallicFactor
-            setPipelineUniform pipelineRoughnessFactor preparedRoughnessFactor
+            setPipelineUniform pipelineBaseColorFactor $ lmatBaseColorFactor preparedMaterial
+            setPipelineUniform pipelineMetallicFactor $ lmatMetallicFactor preparedMaterial
+            setPipelineUniform pipelineRoughnessFactor $ lmatRoughnessFactor preparedMaterial
             setFragmentPassTests preparedFragmentPassTests
 
             forM_ preparedMeshes $ \PreparedMesh {..} -> do
