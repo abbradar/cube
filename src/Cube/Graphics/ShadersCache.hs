@@ -74,9 +74,11 @@ getOrCompilePipeline defns (PipelineCache {..}) = WeakCache.getOrCreate defns cr
           logTxt <- getPipelineLog loadedPipeline
           unless (T.null logTxt) $ $(logWarn) [i|Warnings during shader linking:\n#{logTxt}|]
           attrs <- getActiveAttributes loadedPipeline
-          locs <- mapM (\info -> fromJust <$> getAttributeLocation (attributeName info) loadedPipeline) attrs
-          let loadedAttributes = HMS.fromList $ zipWith (\idx info -> (attributeName info, (idx, info))) locs attrs
-          loadedUniforms <- HMS.fromList <$> zipWith (\idx info -> (uniformName info, (idx, info))) [0..] <$> getActiveUniforms loadedPipeline
+          attrLocs <- mapM (\info -> fromJust <$> getAttributeLocation (attributeName info) loadedPipeline) attrs
+          let loadedAttributes = HMS.fromList $ zipWith (\idx info -> (attributeName info, (idx, info))) attrLocs attrs
+          uniforms <- getActiveUniforms loadedPipeline
+          uniformLocs <- mapM (\info -> fromJust <$> getUniformLocation (uniformName info) loadedPipeline) uniforms
+          let loadedUniforms = HMS.fromList $ zipWith (\idx info -> (uniformName info, (idx, info))) uniformLocs uniforms
           loadedPipelineId <- fromIntegral <$> getRaw loadedPipeline
           let pl = LoadedPipeline {..}
           case pipelinePostLink pl of
