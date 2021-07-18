@@ -6,12 +6,14 @@ module Cube.Graphics.ShadersCache
   ( AttributeName
   , UniformName
   , ShaderDefinitions
+  , PipelineId
   , LoadedPipeline(..)
   , PipelineCache
   , newPipelineCache
   , getOrCompilePipeline
   ) where
 
+import Data.Maybe
 import Data.Typeable
 import Control.Monad
 import Data.ByteString (ByteString)
@@ -34,8 +36,10 @@ type AttributeName = ByteString
 type UniformName = ByteString
 type ShaderDefinitions = HashMap MacroName (Maybe MacroDefinition)
 
+type PipelineId = Int
+
 data LoadedPipeline = LoadedPipeline { loadedPipeline :: Pipeline
-                                     , loadedPipelineId :: Int -- Used for fast indexing
+                                     , loadedPipelineId :: PipelineId -- Used for fast indexing
                                      , loadedAttributes :: HashMap AttributeName (AttributeLocation, AttributeInfo)
                                      , loadedUniforms :: HashMap UniformName (UniformLocation, UniformInfo)
                                      }
@@ -69,7 +73,9 @@ getOrCompilePipeline defns (PipelineCache {..}) = WeakCache.getOrCreate defns cr
           loadedPipeline <- newPipeline [vert, frag] mempty
           logTxt <- getPipelineLog loadedPipeline
           unless (T.null logTxt) $ $(logWarn) [i|Warnings during shader linking:\n#{logTxt}|]
-          loadedAttributes <- HMS.fromList <$> zipWith (\idx info -> (attributeName info, (idx, info))) [0..] <$> getActiveAttributes loadedPipeline
+          attrs <- getActiveAttributes loadedPipeline
+          locs <- mapM (\info -> fromJust <$> getAttributeLocation (attributeName info) loadedPipeline) attrs
+          let loadedAttributes = HMS.fromList $ zipWith (\idx info -> (attributeName info, (idx, info))) locs attrs
           loadedUniforms <- HMS.fromList <$> zipWith (\idx info -> (uniformName info, (idx, info))) [0..] <$> getActiveUniforms loadedPipeline
           loadedPipelineId <- fromIntegral <$> getRaw loadedPipeline
           let pl = LoadedPipeline {..}

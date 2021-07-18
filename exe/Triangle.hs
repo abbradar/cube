@@ -142,11 +142,9 @@ interpretExtra (GameAction {..}) = do
 drawFrame :: MonadCube m => GameWindow -> GameState -> m ()
 drawFrame (GameWindow {..}) (GameState {..}) = do
   let prepared = prepareLoadedNodes stateNodes
-      drawParams = defaultDrawParams { fragmentPassTests = defaultFragmentPassTests { cullFace = NoCulling
-                                                                                    }
+      drawParams = defaultDrawParams { fragmentPassTests = defaultFragmentPassTests
                                      }
-  Caramia.clear clearing { clearDepth = Just 1.0
-                         , clearColor = Just $ Caramia.rgba 0.4 0.4 0.4 1.0
+  Caramia.clear clearing { clearColor = Just $ Caramia.rgba 0.4 0.4 0.4 1.0
                          } screenFramebuffer
   runDrawPreparedPipelines drawParams stateScreen stateCamera prepared
   glSwapWindow gameWindow

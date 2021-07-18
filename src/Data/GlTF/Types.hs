@@ -13,6 +13,7 @@ module Data.GlTF.Types
   , Buffer(..)
   , BufferViewIndex
   , BufferView(..)
+  , AttributeSubIndex
   , AttributeType(..)
   , attributeIsIntegral
   , PrimitiveMode(..)
@@ -30,9 +31,19 @@ module Data.GlTF.Types
   , AccessorIndex
   , Accessor(..)
   , accessorIsValid
+  , MagFilter(..)
+  , MinFilter(..)
+  , WrappingMode(..)
   , TextureIndex
   , Texture(..)
+  , SamplerIndex
+  , Sampler(..)
+  , defaultSampler
   , NormalTextureInfo(..)
+  , PBRMetallicRoughness(..)
+  , defaultPBRMetallicRoughness
+  , TextureInfo(..)
+  , OcclusionTextureInfo(..)
   , MaterialIndex
   , Material(..)
   , defaultMaterial
@@ -116,6 +127,7 @@ data GlTF = GlTF { gltfAsset :: Asset
                  , gltfNodes :: Maybe (Vector Node)
                  , gltfMeshes :: Maybe (Vector Mesh)
                  , gltfScenes :: Maybe (Vector Scene)
+                 , gltfSamplers :: Maybe (Vector Sampler)
                  , gltfTextures :: Maybe (Vector Texture)
                  , gltfImages :: Maybe (Vector Image)
                  , gltfMaterials :: Maybe (Vector Material)
@@ -152,7 +164,9 @@ data BufferView = BufferView { viewName :: Maybe Text
 instance FromJSON BufferView where
   parseJSON = genericParseJSON $ gltfOptions "view"
 
-data AttributeType = Position | Normal | Tangent | TexCoord Int | Color Int | Joints Int | Weights Int
+type AttributeSubIndex = Int
+
+data AttributeType = Position | Normal | Tangent | TexCoord AttributeSubIndex | Color AttributeSubIndex | Joints AttributeSubIndex | Weights AttributeSubIndex
                    deriving (Show, Eq, Ord, Generic, Hashable)
 
 attributeIsIntegral :: AttributeType -> Bool
@@ -436,6 +450,15 @@ data Sampler = Sampler { samplerName :: Maybe Text
 instance FromJSON Sampler where
   parseJSON = genericParseJSON $ gltfOptions "sampler"
 
+defaultSampler :: Sampler
+defaultSampler = Sampler { samplerName = Nothing
+                         , samplerMagFilter = Nothing
+                         , samplerMinFilter = Nothing
+                         , samplerWrapS = Nothing
+                         , samplerWrapT = Nothing
+                         , samplerExtras = Nothing
+                         }
+
 data AlphaMode = Opaque | Mask | Blend
                 deriving (Show, Eq, Ord, Bounded, Enum, Generic, Hashable)
 
@@ -453,6 +476,14 @@ data PBRMetallicRoughness = PBRMetallicRoughness { pbrBaseColorFactor :: Maybe (
 
 instance FromJSON PBRMetallicRoughness where
   parseJSON = genericParseJSON $ gltfOptions "pbr"
+
+defaultPBRMetallicRoughness :: PBRMetallicRoughness
+defaultPBRMetallicRoughness = PBRMetallicRoughness { pbrBaseColorFactor = Nothing
+                                                   , pbrBaseColorTexture = Nothing
+                                                   , pbrMetallicFactor = Nothing
+                                                   , pbrRoughnessFactor = Nothing
+                                                   , pbrMetallicRoughnessTexture = Nothing
+                                                   }
 
 data OcclusionTextureInfo = OcclusionTextureInfo { occlusionIndex :: TextureIndex
                                                  , occlusionTexCoord :: Maybe Int
@@ -476,7 +507,7 @@ instance FromJSON TextureInfo where
 type MaterialIndex = Int
 
 data Material = Material { materialName :: Maybe Text
-                         , materialPBRMetallicRoughness :: Maybe PBRMetallicRoughness
+                         , materialPbrMetallicRoughness :: Maybe PBRMetallicRoughness
                          , materialNormalTexture :: Maybe NormalTextureInfo
                          , materialOcclusionTexture :: Maybe OcclusionTextureInfo
                          , materialEmissiveTexture :: Maybe TextureInfo
@@ -490,7 +521,7 @@ data Material = Material { materialName :: Maybe Text
 
 defaultMaterial :: Material
 defaultMaterial = Material { materialName = Nothing
-                           , materialPBRMetallicRoughness = Nothing
+                           , materialPbrMetallicRoughness = Nothing
                            , materialNormalTexture = Nothing
                            , materialOcclusionTexture = Nothing
                            , materialEmissiveTexture = Nothing
