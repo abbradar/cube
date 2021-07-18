@@ -76,6 +76,7 @@ data LoadedMaterial = LoadedMaterial { lmatTextures :: HashMap TextureType (TF.A
                                      , lmatBaseColorFactor :: V4 Float
                                      , lmatMetallicFactor :: Float
                                      , lmatRoughnessFactor :: Float
+                                     , lmatDoubleSided :: Bool
                                      }
 
 nodeTransform :: TF.Node -> Either String TRSF
@@ -281,6 +282,7 @@ loadMaterial textures (TF.Material {..}) =
                  , lmatBaseColorFactor = fromMaybe 1 pbrBaseColorFactor
                  , lmatMetallicFactor = fromMaybe 1 pbrMetallicFactor
                  , lmatRoughnessFactor = fromMaybe 1 pbrRoughnessFactor
+                 , lmatDoubleSided = fromMaybe False materialDoubleSided
                  }
   where TF.PBRMetallicRoughness {..} = fromMaybe TF.defaultPBRMetallicRoughness materialPbrMetallicRoughness
         primTextures = HM.fromList $ [ (BaseColorTexture, (fromMaybe 0 $ TF.textureInfoTexCoord texInfo, textures V.! TF.textureInfoIndex texInfo)) | texInfo <- toList pbrBaseColorTexture ]

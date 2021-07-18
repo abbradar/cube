@@ -6,9 +6,10 @@ module Cube.Graphics.Render
   ( PreparedMesh(..)
   , PreparedMaterialMeshes(..)
   , PreparedPipeline(..)
+  , PreparedNodes
   , prepareLoadedNodes
-  , drawPreparedPipelines
-  , runDrawPreparedPipelines
+  , drawPreparedNodes
+  , runDrawPreparedNodes
   ) where
 
 import Control.Monad
@@ -37,6 +38,7 @@ data PreparedMaterialMeshes = PreparedMaterialMeshes { preparedTextures :: IntMa
                                                      , preparedBaseColorFactor :: V4 Float
                                                      , preparedMetallicFactor :: Float
                                                      , preparedRoughnessFactor :: Float
+                                                     , preparedFragmentPassTests :: FragmentPassTests
                                                      , preparedMeshes :: [PreparedMesh]
                                                      }
 
@@ -45,6 +47,7 @@ instance Semigroup PreparedMaterialMeshes where
                                   , preparedBaseColorFactor = preparedBaseColorFactor b
                                   , preparedMetallicFactor = preparedMetallicFactor b
                                   , preparedRoughnessFactor = preparedRoughnessFactor b
+                                  , preparedFragmentPassTests = preparedFragmentPassTests b
                                   , preparedMeshes = preparedMeshes a ++ preparedMeshes b
                                   }
 
@@ -78,6 +81,10 @@ prepareLoadedNodes nodes = flip execState IM.empty $ mapM_ (go mempty) $ loadedN
                                            , preparedBaseColorFactor = lmatBaseColorFactor
                                            , preparedMetallicFactor = lmatMetallicFactor
                                            , preparedRoughnessFactor = lmatRoughnessFactor
+                                           , preparedFragmentPassTests = defaultFragmentPassTests { cullFace = if lmatDoubleSided then NoCulling else Back
+                                                                                                  , writeDepth = True
+                                                                                                  , depthTest = Just Less
+                                                                                                  }
                                            , preparedMeshes = [PreparedMesh { preparedModelMatrix = trsToMatrix trs
                                                                             , preparedDrawCommands = drawCommands
                                                                             }]
@@ -103,8 +110,8 @@ prepareLoadedNodes nodes = flip execState IM.empty $ mapM_ (go mempty) $ loadedN
 
           mapM_ (go trs) lnodeChildren
 
-drawPreparedPipelinesGeneric :: (MonadCube m) => Bool -> ScreenF -> CameraF -> PreparedNodes -> DrawT m ()
-drawPreparedPipelinesGeneric setFirstPipeline (Screen {..}) camera = foldM_ drawPipeline setFirstPipeline
+drawPreparedNodesGeneric :: (MonadCube m) => Bool -> ScreenF -> CameraF -> PreparedNodes -> DrawT m ()
+drawPreparedNodesGeneric setFirstPipeline (Screen {..}) camera = foldM_ drawPipeline setFirstPipeline
   where viewMatrix = cameraToMatrix camera
         viewProjectionMatrix = projectionMatrix !*! viewMatrix
         drawPipeline doSetPipeline (PreparedPipeline {..}) = do
@@ -125,7 +132,8 @@ drawPreparedPipelinesGeneric setFirstPipeline (Screen {..}) camera = foldM_ draw
             setTextureBindings preparedTextures
             setPipelineUniform pipelineBaseColorFactor preparedBaseColorFactor
             setPipelineUniform pipelineMetallicFactor preparedMetallicFactor
-            setPipelineUniform pipelineRoughnessFactor  preparedRoughnessFactor
+            setPipelineUniform pipelineRoughnessFactor preparedRoughnessFactor
+            setFragmentPassTests preparedFragmentPassTests
 
             forM_ preparedMeshes $ \PreparedMesh {..} -> do
               setPipelineUniform pipelineModelMatrix $ transpose preparedModelMatrix
@@ -134,12 +142,12 @@ drawPreparedPipelinesGeneric setFirstPipeline (Screen {..}) camera = foldM_ draw
 
           return False
 
-drawPreparedPipelines :: (MonadCube m) => ScreenF -> CameraF -> PreparedNodes -> DrawT m ()
-drawPreparedPipelines = drawPreparedPipelinesGeneric True
+drawPreparedNodes :: (MonadCube m) => ScreenF -> CameraF -> PreparedNodes -> DrawT m ()
+drawPreparedNodes = drawPreparedNodesGeneric True
 
-runDrawPreparedPipelines :: (MonadCube m) => DrawParams -> ScreenF -> CameraF -> PreparedNodes -> m ()
-runDrawPreparedPipelines params screen camera nodes
+runDrawPreparedNodes :: (MonadCube m) => DrawParams -> ScreenF -> CameraF -> PreparedNodes -> m ()
+runDrawPreparedNodes params screen camera nodes
   | IM.null nodes = return ()
-  | otherwise = runDraws newParams $ drawPreparedPipelinesGeneric False screen camera nodes
+  | otherwise = runDraws newParams $ drawPreparedNodesGeneric False screen camera nodes
   where (firstPl:_) = IM.elems nodes
         newParams = params { pipeline = preparedPipeline firstPl }

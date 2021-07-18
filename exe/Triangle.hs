@@ -54,7 +54,7 @@ data GameWindow = GameWindow { gameWindow :: SDL.Window
 
 data GameState = GameState { stateCamera :: CameraF
                            , stateScreen :: ScreenF
-                           , stateNodes :: LoadedNodes
+                           , statePreparedNodes :: PreparedNodes
                            }
 
 data GameInitialState = GameInitialState { initialNodes :: LoadedNodes
@@ -116,7 +116,7 @@ main = do
                                   }
           gameApp :: EventLoopApp GameState GameExtra GameAction
           gameApp = EventLoopApp { eappNetworkSetup = gameNetwork gameWindow initialState
-                                 , eappDrawFrame = \_extra frame -> drawFrame gameWindow frame
+                                 , eappDrawFrame = \_extra frame -> drawGameFrame gameWindow frame
                                  , eappReadAction = readExtra
                                  , eappInterpretAction = interpretExtra
                                  , eappFrameInterval = 1000 `div` fromIntegral gameFrameRate
@@ -139,14 +139,12 @@ interpretExtra (GameAction {..}) = do
     Nothing -> return ()
     Just (V2 width height) -> setViewportSize width height
 
-drawFrame :: MonadCube m => GameWindow -> GameState -> m ()
-drawFrame (GameWindow {..}) (GameState {..}) = do
-  let prepared = prepareLoadedNodes stateNodes
-      drawParams = defaultDrawParams { fragmentPassTests = defaultFragmentPassTests
-                                     }
-  Caramia.clear clearing { clearColor = Just $ Caramia.rgba 0.4 0.4 0.4 1.0
+drawGameFrame :: MonadCube m => GameWindow -> GameState -> m ()
+drawGameFrame (GameWindow {..}) (GameState {..}) = do
+  Caramia.clear clearing { clearDepth = Just 1.0
+                         , clearColor = Just $ Caramia.rgba 0.4 0.4 0.4 1.0
                          } screenFramebuffer
-  runDrawPreparedPipelines drawParams stateScreen stateCamera prepared
+  runDrawPreparedNodes defaultDrawParams stateScreen stateCamera statePreparedNodes
   glSwapWindow gameWindow
   runPendingFinalizers
 
@@ -189,8 +187,9 @@ gameNetwork (GameWindow { gameSettings = GameSettings {..}, ..}) (GameInitialSta
 
   let screen = fmap (\(V2 width height) -> perspectiveScreen gameFovRadians (fromIntegral width / fromIntegral height) gameNearPlane gameFarPlane) windowSize
       nodes = constant initialNodes
+      preparedNodes = fmap prepareLoadedNodes nodes
 
-      frameBehavior = GameState <$> current playerCamera <*> current screen <*> nodes
+      frameBehavior = GameState <$> current playerCamera <*> current screen <*> preparedNodes
 
       network = EventLoopNetwork { eloopQuitEvent = quitEvent
                                  , eloopFrameBehavior = frameBehavior
