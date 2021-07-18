@@ -23,17 +23,20 @@ in vec3 vertNormal;
 #endif
 #endif
 
-#if COLOR_0_COMPONENTS == 3
-in vec3 vertColor;
-#elif COLOR_0_COMPONENTS == 4
-in vec4 vertColor;
+#define MAKE_COLOR_TYPE(count) vec##count
+
+#ifdef COLOR_0_COMPONENTS
+#define COLOR_0_TYPE MAKE_COLOR_TYPE(COLOR_0_COMPONENTS)
+
+in COLOR_0_TYPE vertColor;
 #endif
 
 uniform vec4 uniBaseColorFactor;
 
+#define MAKE_TEXTURE_COORD(idx) vertTexCoord_##idx
+
 #ifdef BASE_COLOR_TEXTURE_IDX
-#define MAKE_BASE_COLOR_TEXTURE_COORD(idx) vertTexCoord_##idx
-#define BASE_COLOR_TEXTURE_COORD MAKE_BASE_COLOR_TEXTURE_COORD(BASE_COLOR_TEXTURE_IDX)
+#define BASE_COLOR_TEXTURE_COORD MAKE_TEXTURE_COORD(BASE_COLOR_TEXTURE_IDX)
 
 uniform sampler2D uniBaseColorTexture;
 #endif
@@ -51,7 +54,7 @@ void main()
 #endif
 
 #ifdef HAS_ALPHA_CUTOFF
-    // Late discard to avaoid samplig artifacts. See https://github.com/KhronosGroup/glTF-Sample-Viewer/issues/267
+    // Late discard to avaoid sampling artifacts. See https://github.com/KhronosGroup/glTF-Sample-Viewer/issues/267
     if (color.a < uniAlphaCutoff)
         discard;
 #endif
