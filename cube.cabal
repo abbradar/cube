@@ -14,6 +14,7 @@ build-type:          Simple
 library
   exposed-modules:
       Control.Monad.Ref.Logger
+      Cube.Graphics.Animation
       Cube.Graphics.Camera
       Cube.Graphics.Framerate
       Cube.Graphics.Geometry
@@ -57,6 +58,7 @@ library
       BangPatterns
       OverloadedStrings
       TupleSections
+      DeriveFunctor
       ScopedTypeVariables
       TemplateHaskell
       QuasiQuotes
@@ -135,6 +137,7 @@ executable triangle
       BangPatterns
       OverloadedStrings
       TupleSections
+      DeriveFunctor
       ScopedTypeVariables
       TemplateHaskell
       QuasiQuotes

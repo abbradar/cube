@@ -7,8 +7,6 @@ module Cube.Graphics.Model
   , LoadedModel(..)
   , LoadedNodeTree(..)
   , LoadedMesh(..)
-  , LoadedSampler(..)
-  , LoadedAnimation(..)
   , TextureType(..)
   , LoadedPrimitive(..)
   , MaterialId
@@ -84,12 +82,6 @@ data LoadedMaterial = LoadedMaterial { lmatTextures :: HashMap TextureType (TF.A
                                      , lmatAlphaCutoff :: Maybe Float
                                      , lmatId :: MaterialId
                                      }
-
-data LoadedSampler = LoadedSampler { lsampInputs :: Vector Float
-                                   }
-
-data LoadedAnimation = LoadedAnimation { lanimSamplers :: Vector LoadedSampler
-                                       }
 
 nodeTransform :: TF.Node -> Either String TRSF
 nodeTransform (TF.Node { nodeMatrix = Just mtx, nodeRotation = Nothing, nodeScale = Nothing, nodeTranslation = Nothing }) = return $ matrixToTRS mtx
@@ -417,7 +409,6 @@ loadMesh materials accessors (TF.Mesh {..}) = do
     return $ Just $ LoadedMesh {..}
 
 data LoadedModel = LoadedModel { loadedNodes :: Vector LoadedNodeTree
-                               , loadedAnimations :: Vector LoadedAnimation
                                }
 
 data PipelineMeta = PipelineMeta { pipelineAttributes :: HashMap TF.AttributeType AttributeLocation
@@ -537,5 +528,4 @@ loadModel plCache bound = do
                       }
   nodes <- flip runReaderT info $ flip evalStateT initial $ loadModel' bound
   return LoadedModel { loadedNodes = nodes
-                     , loadedAnimations = V.empty
                      }

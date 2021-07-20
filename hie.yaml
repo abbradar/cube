@@ -1,3 +1,12 @@
 cradle:
-  cabal:
-    component: "lib:cube"
+  multi:
+    - path: "./src"
+      config:
+        cradle:
+          cabal:
+            component: "lib:cube"
+    - path: "./exe"
+      config:
+        cradle:
+          cabal:
+            component: "exe:triangle"

@@ -5,6 +5,8 @@
 module Data.GlTF.Accessors
   ( AccessorRawVector(..)
   , AccessorRawData(..)
+  , mapAccessorRawVector
+  , normalizeAccessorData
   , readRawAccessorWithBuffer
   ) where
 
@@ -38,6 +40,29 @@ data AccessorRawData = ARByte (AccessorRawVector Int8)
                      | ARUInt (AccessorRawVector Word32)
                      | ARFloat (AccessorRawVector Float)
                      deriving (Show, Eq, Ord)
+
+mapAccessorRawVector :: (VS.Storable a, VS.Storable b) => (a -> b) -> AccessorRawVector a -> AccessorRawVector b
+mapAccessorRawVector f (ARScalar vec) = ARScalar $ VS.map f vec
+mapAccessorRawVector f (ARVec2 vec) = ARVec2 $ VS.map (fmap f) vec
+mapAccessorRawVector f (ARVec3 vec) = ARVec3 $ VS.map (fmap f) vec
+mapAccessorRawVector f (ARVec4 vec) = ARVec4 $ VS.map (fmap f) vec
+mapAccessorRawVector f (ARMat2 vec) = ARMat2 $ VS.map (fmap $ fmap f) vec
+mapAccessorRawVector f (ARMat3 vec) = ARMat3 $ VS.map (fmap $ fmap f) vec
+mapAccessorRawVector f (ARMat4 vec) = ARMat4 $ VS.map (fmap $ fmap f) vec
+
+normalizeSigned :: forall a. (Integral a, Bounded a) => a -> Float
+normalizeSigned x = max (fromIntegral x / fromIntegral (maxBound :: a)) (-1)
+
+normalizeUnsigned :: forall a. (Integral a, Bounded a) => a -> Float
+normalizeUnsigned x = fromIntegral x / fromIntegral (maxBound :: a)
+
+normalizeAccessorData :: AccessorRawData -> AccessorRawVector Float
+normalizeAccessorData (ARByte vec) = mapAccessorRawVector normalizeSigned vec
+normalizeAccessorData (ARUByte vec) = mapAccessorRawVector normalizeUnsigned vec
+normalizeAccessorData (ARShort vec) = mapAccessorRawVector normalizeSigned vec
+normalizeAccessorData (ARUShort vec) = mapAccessorRawVector normalizeUnsigned vec
+normalizeAccessorData (ARUInt vec) = mapAccessorRawVector normalizeUnsigned vec
+normalizeAccessorData (ARFloat vec) = vec
 
 buildFromStrides :: Int -> Int -> Int -> ByteString -> [ByteString]
 buildFromStrides _stride _sizeOfElement 0 _bs = []
