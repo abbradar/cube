@@ -1,0 +1,11 @@
+{
+  "models": {
+    "cube": "models/cube_test_sep.gltf"
+  },
+  "graph": [
+    {
+      "model": "cube"
+    }
+  ]
+}
+

@@ -1,7 +1,7 @@
 {
     "vertexShader": "shaders/simple.vert",
     "fragmentShader": "shaders/simple.frag",
-    "models": ["models/cube_test_sep.gltf"],
+    "scene": "scene.json",
     "initialWidth": 640,
     "initialHeight": 480,
     "nearPlane": 0.1,

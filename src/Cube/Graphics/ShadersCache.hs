@@ -6,6 +6,7 @@ module Cube.Graphics.ShadersCache
   ( AttributeName
   , UniformName
   , ShaderDefinitions
+  , ToShaderDefinitions(..)
   , PipelineId
   , LoadedPipeline(..)
   , PipelineCache
@@ -15,6 +16,7 @@ module Cube.Graphics.ShadersCache
 
 import Data.Maybe
 import Data.Typeable
+import Data.Hashable
 import Control.Monad
 import Data.ByteString (ByteString)
 import Data.Text (Text)
@@ -25,7 +27,6 @@ import Data.String.Interpolate
 import Control.Monad.Logger
 import Control.Monad.Catch
 import Graphics.Caramia
-import Graphics.Caramia.OpenGLResource
 
 import Data.GLSL.Preprocessor
 import Data.WeakCache (WeakCache)
@@ -38,20 +39,21 @@ type ShaderDefinitions = HashMap MacroName (Maybe MacroDefinition)
 
 type PipelineId = Int
 
+class ToShaderDefinitions a where
+  toShaderDefinitions :: a -> ShaderDefinitions
+
 data LoadedPipeline = LoadedPipeline { loadedPipeline :: Pipeline
-                                     , loadedPipelineId :: PipelineId -- Used for fast indexing
                                      , loadedAttributes :: HashMap AttributeName (AttributeLocation, AttributeInfo)
                                      , loadedUniforms :: HashMap UniformName (UniformLocation, UniformInfo)
                                      }
 
-data PipelineCache meta = PipelineCache { pipelineVertex :: ShaderWithIncludes
-                                        , pipelineFragment :: ShaderWithIncludes
-                                        , pipelinePostLink :: LoadedPipeline -> Either String meta
-                                        , pipelineCache :: WeakCache ShaderDefinitions (meta, LoadedPipeline)
-                                        }
+data PipelineCache key meta = PipelineCache { pipelineVertex :: ShaderWithIncludes
+                                            , pipelineFragment :: ShaderWithIncludes
+                                            , pipelineCache :: WeakCache key (meta, LoadedPipeline)
+                                            }
 
-newPipelineCache :: MonadCube m => (LoadedPipeline -> Either String meta) -> ShaderWithIncludes -> ShaderWithIncludes -> m (PipelineCache meta)
-newPipelineCache pipelinePostLink pipelineVertex pipelineFragment = do
+newPipelineCache :: MonadCube m => ShaderWithIncludes -> ShaderWithIncludes -> m (PipelineCache key meta)
+newPipelineCache pipelineVertex pipelineFragment = do
   pipelineCache <- WeakCache.new
   return PipelineCache {..}
 
@@ -59,11 +61,11 @@ data PreprocessedShaderCompilationError = PreprocessedShaderCompilationError Sha
                                         deriving (Show, Eq, Typeable, Exception)
 
 -- Returns False as second argument if a cached pipeline was used, True if a new one has been built.
-getOrCompilePipeline :: MonadCube m => ShaderDefinitions -> PipelineCache meta -> m (meta, LoadedPipeline)
-getOrCompilePipeline defns (PipelineCache {..}) = WeakCache.getOrCreate defns create pipelineCache
+getOrCompilePipeline :: (Eq key, Hashable key, ToShaderDefinitions key, MonadCube m) => (LoadedPipeline -> m meta) -> key -> PipelineCache key meta -> m (meta, LoadedPipeline)
+getOrCompilePipeline postLink key (PipelineCache {..}) = WeakCache.getOrCreate key create pipelineCache
   where create = do
           let compileOne stage shader = do
-                let source = shaderSource (HMS.toList defns) shader
+                let source = shaderSource (HMS.toList $ toShaderDefinitions key) shader
                 ret <- catch (newShaderB source stage) (\(ShaderCompilationError txt) -> throwM $ PreprocessedShaderCompilationError (shaderPaths shader) txt)
                 logTxt <- getShaderLog ret
                 unless (T.null logTxt) $ $(logWarn) [i|Warnings during shader compilation:\n#{logTxt}|]
@@ -79,8 +81,6 @@ getOrCompilePipeline defns (PipelineCache {..}) = WeakCache.getOrCreate defns cr
           uniforms <- getActiveUniforms loadedPipeline
           uniformLocs <- mapM (\info -> fromJust <$> getUniformLocation (uniformName info) loadedPipeline) uniforms
           let loadedUniforms = HMS.fromList $ zipWith (\idx info -> (uniformName info, (idx, info))) uniformLocs uniforms
-          loadedPipelineId <- fromIntegral <$> getRaw loadedPipeline
           let pl = LoadedPipeline {..}
-          case pipelinePostLink pl of
-            Left e -> fail $ "Failed pipeline post-link step: " ++ e
-            Right meta -> return (meta, pl)
+          meta <- postLink pl
+          return (meta, pl)

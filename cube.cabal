@@ -19,6 +19,9 @@ library
       Cube.Graphics.Geometry
       Cube.Graphics.Model
       Cube.Graphics.Render
+      Cube.Graphics.Scene.Resources
+      Cube.Graphics.Scene.Runtime
+      Cube.Graphics.Scene.Types
       Cube.Graphics.Screen
       Cube.Graphics.ShadersCache
       Cube.Graphics.TRS
@@ -40,6 +43,7 @@ library
       Data.GlTF.Resources
       Data.GlTF.Types
       Data.GlTF.URI
+      Data.Vector.Hashable
       Data.WeakCache
       Foreign.Storable.Generic
       Linear.Aeson

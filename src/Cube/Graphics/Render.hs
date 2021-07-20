@@ -7,11 +7,12 @@ module Cube.Graphics.Render
   , PreparedMaterialMeshes(..)
   , PreparedPipeline(..)
   , PreparedNodes
-  , prepareLoadedModel
+  , prepareSceneGraph
   , drawPreparedNodes
   , runDrawPreparedNodes
   ) where
 
+import Data.Maybe
 import Control.Monad
 import Data.IntMap.Strict (IntMap)
 import qualified Data.IntMap.Strict as IM
@@ -29,10 +30,16 @@ import Cube.Graphics.Model
 import Cube.Graphics.Screen
 import Cube.Graphics.Camera
 import Cube.Graphics.ShadersCache
+import Cube.Graphics.Scene.Runtime
 
-data PreparedMesh = PreparedMesh { preparedModelMatrix :: MF44
+data PreparedMesh = PreparedMesh { preparedModelMatrix :: M44F
                                  , preparedDrawCommands :: [DrawCommand]
                                  }
+
+instance Semigroup PreparedMesh where
+  a <> b = PreparedMesh { preparedModelMatrix = preparedModelMatrix b
+                        , preparedDrawCommands = preparedDrawCommands a ++ preparedDrawCommands b
+                        }
 
 data PreparedMaterialMeshes = PreparedMaterialMeshes { preparedTextures :: IntMap Texture
                                                      , preparedMaterial :: LoadedMaterial
@@ -47,9 +54,9 @@ instance Semigroup PreparedMaterialMeshes where
                                   , preparedMeshes = preparedMeshes a ++ preparedMeshes b
                                   }
 
-data PreparedPipeline = PreparedPipeline { preparedPipeline :: Pipeline
+data PreparedPipeline = PreparedPipeline { preparedPipeline :: LoadedPipeline
                                          , preparedMeta :: PipelineMeta
-                                         , preparedMaterialMeshes :: HashMap (Maybe MaterialId) PreparedMaterialMeshes
+                                         , preparedMaterialMeshes :: HashMap (ModelId, MaterialId) PreparedMaterialMeshes
                                          }
 
 instance Semigroup PreparedPipeline where
@@ -58,70 +65,99 @@ instance Semigroup PreparedPipeline where
                             , preparedMaterialMeshes = HM.unionWith (<>) (preparedMaterialMeshes a) (preparedMaterialMeshes b)
                             }
 
+data HalfPreparedMaterialMeshes = HalfPreparedMaterialMeshes { halfPreparedMaterial :: LoadedMaterial
+                                                             , halfPreparedCommands :: [DrawCommand]
+                                                             }
+
+instance Semigroup HalfPreparedMaterialMeshes where
+  a <> b = HalfPreparedMaterialMeshes { halfPreparedMaterial = halfPreparedMaterial b
+                                      , halfPreparedCommands = halfPreparedCommands a ++ halfPreparedCommands b
+                                      }
+
+data HalfPreparedPipeline = HalfPreparedPipeline { halfPreparedPipeline :: LoadedPipeline
+                                                 , halfPreparedMeta :: PipelineMeta
+                                                 , halfPreparedMaterialMeshes :: HashMap (ModelId, MaterialId) HalfPreparedMaterialMeshes
+                                                 }
+
+instance Semigroup HalfPreparedPipeline where
+  a <> b = HalfPreparedPipeline { halfPreparedPipeline = halfPreparedPipeline b
+                                , halfPreparedMeta = halfPreparedMeta b
+                                , halfPreparedMaterialMeshes = HM.unionWith (<>) (halfPreparedMaterialMeshes a) (halfPreparedMaterialMeshes b)
+                                }
+
 type PreparedNodes = IntMap PreparedPipeline
 
-prepareLoadedModel :: LoadedModel -> PreparedNodes
-prepareLoadedModel nodes = flip execState IM.empty $ mapM_ (go mempty) $ loadedNodes nodes
-  where go :: TRSF -> LoadedNodeTree -> State (IntMap PreparedPipeline) ()
+prepareSceneGraphModel :: TRSF -> SceneGraphModel -> PreparedNodes
+prepareSceneGraphModel initialTrs (SceneGraphModel {..}) = flip execState IM.empty $ mapM_ (go initialTrs) $ loadedNodes sgmModel
+  where go :: TRSF -> LoadedNodeTree -> State PreparedNodes ()
         go parentTrs (LoadedNodeTree {..}) = do
           let trs = parentTrs <> lnodeTrs
+              trsMatrix = trsToMatrix trs
           case lnodeMesh of
             Nothing -> return ()
             Just (LoadedMesh {..}) -> do
-              let mapPrimitive prim = (lprimPipelineId prim, HM.singleton (lprimMaterialId prim) [lprimDrawCommand prim])
-                  pipelineMeshes = IM.fromListWith (HM.unionWith (++)) $ map mapPrimitive $ V.toList lmeshPrimitives
+              let halfMapPrimitive (LoadedPrimitive {..}) = (pipelineId lprimPipelineMeta, preparedPl)
+                    where LoadedMaterial {..} = lprimMaterial
+                          preparedPl = HalfPreparedPipeline { halfPreparedPipeline = lprimPipeline
+                                                            , halfPreparedMeta = lprimPipelineMeta
+                                                            , halfPreparedMaterialMeshes = HM.singleton (sgmId, lmatId) preparedMeshes
+                                                            }
+                          preparedMeshes = HalfPreparedMaterialMeshes { halfPreparedMaterial = lprimMaterial
+                                                                      , halfPreparedCommands = [lprimDrawCommand]
+                                                                      }
 
-                  makeMaterialMesh :: Maybe MaterialId -> [DrawCommand] -> PreparedMaterialMeshes
-                  makeMaterialMesh matId drawCommands =
+                  finalizePipeline (HalfPreparedPipeline {..}) =
+                    PreparedPipeline { preparedPipeline = halfPreparedPipeline
+                                     , preparedMeta = halfPreparedMeta
+                                     , preparedMaterialMeshes = HM.map finalizeMaterialMeshes halfPreparedMaterialMeshes
+                                     }
+
+                  finalizeMaterialMeshes (HalfPreparedMaterialMeshes {..}) =
                     PreparedMaterialMeshes { preparedTextures = IM.fromList $ map (\(typ, (_subIdx, tex)) -> (fromEnum typ, tex)) $ HM.toList lmatTextures
-                                           , preparedMaterial = mat
+                                           , preparedMaterial = halfPreparedMaterial
                                            , preparedFragmentPassTests = defaultFragmentPassTests { cullFace = if lmatDoubleSided then NoCulling else Back
                                                                                                   , writeDepth = True
                                                                                                   , depthTest = Just Less
                                                                                                   }
-                                           , preparedMeshes = [PreparedMesh { preparedModelMatrix = trsToMatrix trs
-                                                                            , preparedDrawCommands = drawCommands
-                                                                            }]
+                                           , preparedMeshes = [preparedMesh]
                                            }
-                            where mat@LoadedMaterial {..} =
-                                    case matId of
-                                      Nothing -> defaultMaterial
-                                      Just i -> loadedMaterials nodes IM.! i
 
-                  addPipeline :: IntMap PreparedPipeline -> Int -> HashMap (Maybe MaterialId) [DrawCommand] -> IntMap PreparedPipeline
-                  addPipeline pls plId meshCommands = IM.alter modifyPipeline plId pls
-                    where
-                      meshes = HM.mapWithKey makeMaterialMesh meshCommands
-                      modifyPipeline (Just oldPl) = Just oldPl { preparedMaterialMeshes = HM.unionWith (<>) meshes (preparedMaterialMeshes oldPl)
-                                                               }
-                      modifyPipeline Nothing = Just PreparedPipeline { preparedPipeline = loadedPipeline pl
-                                                                     , preparedMeta = meta
-                                                                     , preparedMaterialMeshes = meshes
-                                                                     }
-                        where (meta, pl) = loadedPipelines nodes IM.! plId
+                    where LoadedMaterial {..} = halfPreparedMaterial
+                          preparedMesh = PreparedMesh { preparedModelMatrix = trsMatrix
+                                                      , preparedDrawCommands = halfPreparedCommands
+                                                      }
 
-              modify' $ \pls -> IM.foldlWithKey' addPipeline pls pipelineMeshes
+              let prepared = IM.map finalizePipeline $ IM.fromListWith (<>) $ map halfMapPrimitive $ V.toList lmeshPrimitives
+              modify' $ IM.unionWith (<>) prepared
 
           mapM_ (go trs) lnodeChildren
 
-drawPreparedNodesGeneric :: (MonadCube m) => Bool -> ScreenF -> CameraF -> PreparedNodes -> DrawT m ()
+prepareSceneGraph :: SceneGraph -> PreparedNodes
+prepareSceneGraph sg = foldr (IM.unionWith (<>)) IM.empty $ concatMap (go mempty) (V.toList $ sgGraph sg)
+  where go :: TRSF -> SceneGraphNode -> [PreparedNodes]
+        go parentTrs (SceneGraphNode {..}) =
+          let trs = parentTrs <> sgnTrs
+              mmodel = fmap (prepareSceneGraphModel trs) sgnModel
+          in maybeToList mmodel ++ concatMap (go trs) (V.toList sgnChildren)
+
+drawPreparedNodesGeneric :: MonadCube m => Bool -> ScreenF -> CameraF -> PreparedNodes -> DrawT m ()
 drawPreparedNodesGeneric setFirstPipeline (Screen {..}) camera = foldM_ drawPipeline setFirstPipeline
   where viewMatrix = cameraToMatrix camera
         viewProjectionMatrix = projectionMatrix !*! viewMatrix
         drawPipeline doSetPipeline (PreparedPipeline {..}) = do
-          when doSetPipeline $ setPipeline preparedPipeline
+          when doSetPipeline $ setPipeline $ loadedPipeline preparedPipeline
 
           let setPipelineUniform :: (MonadIO m, Uniformable a) => (PipelineMeta -> Maybe UniformLocation) -> a -> m ()
               setPipelineUniform accessor value =
                 case accessor preparedMeta of
                   Nothing -> return ()
-                  Just idx -> setUniform value idx preparedPipeline
+                  Just idx -> setUniform value idx $ loadedPipeline preparedPipeline
 
           setPipelineUniform pipelineViewProjectionMatrix $ transpose viewProjectionMatrix
           setPipelineUniform pipelineCamera $ cameraPosition camera
 
           forM_ (HM.toList $ pipelineTextures preparedMeta) $ \(texType, idx) ->
-            setUniform (fromEnum texType) idx preparedPipeline
+            setUniform (fromEnum texType) idx $ loadedPipeline preparedPipeline
 
           forM_ preparedMaterialMeshes $ \PreparedMaterialMeshes {..} -> do
             setTextureBindings preparedTextures
@@ -137,12 +173,12 @@ drawPreparedNodesGeneric setFirstPipeline (Screen {..}) camera = foldM_ drawPipe
 
           return False
 
-drawPreparedNodes :: (MonadCube m) => ScreenF -> CameraF -> PreparedNodes -> DrawT m ()
+drawPreparedNodes :: MonadCube m => ScreenF -> CameraF -> PreparedNodes -> DrawT m ()
 drawPreparedNodes = drawPreparedNodesGeneric True
 
-runDrawPreparedNodes :: (MonadCube m) => DrawParams -> ScreenF -> CameraF -> PreparedNodes -> m ()
+runDrawPreparedNodes :: MonadCube m => DrawParams -> ScreenF -> CameraF -> PreparedNodes -> m ()
 runDrawPreparedNodes params screen camera nodes
   | IM.null nodes = return ()
   | otherwise = runDraws newParams $ drawPreparedNodesGeneric False screen camera nodes
   where (firstPl:_) = IM.elems nodes
-        newParams = params { pipeline = preparedPipeline firstPl }
+        newParams = params { pipeline = loadedPipeline $ preparedPipeline firstPl }

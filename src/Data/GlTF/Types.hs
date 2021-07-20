@@ -28,10 +28,15 @@ module Data.GlTF.Types
   , componentSize
   , componentIsInteger
   , AccessorType(..)
+  , accessorMatrixColumnsAlignment
   , accessorComponentsNumber
+  , accessorRows
+  , accessorColumns
+  , accessorElementSize
   , AccessorIndex
   , Accessor(..)
   , accessorIsValid
+  , attributeAccessorIsValid
   , MagFilter(..)
   , MinFilter(..)
   , WrappingMode(..)
@@ -344,13 +349,51 @@ data AccessorType = ATScalar | ATVec2 | ATVec3 | ATVec4 | ATMat2 | ATMat3 | ATMa
                   deriving (Show, Eq, Ord, Bounded, Enum, Generic, Hashable)
 
 accessorComponentsNumber :: AccessorType -> Int
-accessorComponentsNumber ATScalar = 1
-accessorComponentsNumber ATVec2 = 2
-accessorComponentsNumber ATVec3 = 3
-accessorComponentsNumber ATVec4 = 4
-accessorComponentsNumber ATMat2 = 2 * 2
-accessorComponentsNumber ATMat3 = 3 * 3
-accessorComponentsNumber ATMat4 = 4 * 4
+accessorComponentsNumber typ = accessorRows typ * accessorColumns typ
+
+-- https://github.com/KhronosGroup/glTF/blob/master/specification/2.0/README.md#data-alignment
+accessorMatrixColumnsAlignment :: Int
+accessorMatrixColumnsAlignment = 4
+
+accessorRows :: AccessorType -> Int
+accessorRows ATScalar = 1
+accessorRows ATVec2 = 1
+accessorRows ATVec3 = 1
+accessorRows ATVec4 = 1
+accessorRows ATMat2 = 2
+accessorRows ATMat3 = 3
+accessorRows ATMat4 = 4
+
+accessorColumns :: AccessorType -> Int
+accessorColumns ATScalar = 1
+accessorColumns ATVec2 = 2
+accessorColumns ATVec3 = 3
+accessorColumns ATVec4 = 4
+accessorColumns ATMat2 = 2
+accessorColumns ATMat3 = 3
+accessorColumns ATMat4 = 4
+
+accessorElementSize :: AccessorType -> ComponentType -> Int
+accessorElementSize accessorType componentType
+  | rows == 1 = columnSize
+  | otherwise = matrixColumnSize * rows
+  where cols = accessorColumns accessorType
+        rows = accessorRows accessorType
+        compSize = componentSize componentType
+        columnSize = compSize * cols
+        matrixColumnTrail = columnSize `mod` accessorMatrixColumnsAlignment
+        matrixColumnSize
+          | matrixColumnTrail == 0 = columnSize
+          | otherwise = columnSize + (accessorMatrixColumnsAlignment - matrixColumnTrail)
+
+accessorIsValid :: BufferView -> Accessor -> Bool
+accessorIsValid (BufferView {..}) (Accessor {..}) = offset + stride * (accessorCount - 1) + sizeOfElement <= viewByteLength
+  where offset = fromMaybe 0 accessorByteOffset
+        sizeOfElement = accessorElementSize accessorType accessorComponentType
+        stride =
+          case fromMaybe 0 viewByteStride of
+            0 -> sizeOfElement
+            val -> val
 
 instance FromJSON AccessorType where
   parseJSON = genericParseJSON $ defaultOptions { constructorTagModifier = map toUpper . removePrefix "AT"
@@ -379,17 +422,17 @@ floatOrNormalized (Accessor { accessorComponentType = CTUnsignedByte, accessorNo
 floatOrNormalized (Accessor { accessorComponentType = CTUnsignedShort, accessorNormalized = Just True }) = True
 floatOrNormalized _ = False
 
-accessorIsValid :: AttributeType -> Accessor -> Bool
-accessorIsValid ATPosition (Accessor { accessorType = ATVec3, accessorComponentType = CTFloat }) = True
-accessorIsValid ATNormal (Accessor { accessorType = ATVec3, accessorComponentType = CTFloat }) = True
-accessorIsValid ATTangent (Accessor { accessorType = ATVec4, accessorComponentType = CTFloat }) = True
-accessorIsValid (ATTexCoord _) accessor@(Accessor { accessorType = ATVec2 }) = floatOrNormalized accessor
-accessorIsValid (ATColor _) accessor@(Accessor { accessorType = ATVec3 }) = floatOrNormalized accessor
-accessorIsValid (ATColor _) accessor@(Accessor { accessorType = ATVec4 }) = floatOrNormalized accessor
-accessorIsValid (ATJoints _) (Accessor { accessorType = ATVec4, accessorComponentType = CTUnsignedByte, accessorNormalized = (fromMaybe False -> False) }) = True
-accessorIsValid (ATJoints _) (Accessor { accessorType = ATVec4, accessorComponentType = CTUnsignedShort, accessorNormalized = (fromMaybe False -> False) }) = True
-accessorIsValid (ATWeights _) accessor@(Accessor { accessorType = ATVec4 }) = floatOrNormalized accessor
-accessorIsValid _ _ = False
+attributeAccessorIsValid :: AttributeType -> Accessor -> Bool
+attributeAccessorIsValid ATPosition (Accessor { accessorType = ATVec3, accessorComponentType = CTFloat }) = True
+attributeAccessorIsValid ATNormal (Accessor { accessorType = ATVec3, accessorComponentType = CTFloat }) = True
+attributeAccessorIsValid ATTangent (Accessor { accessorType = ATVec4, accessorComponentType = CTFloat }) = True
+attributeAccessorIsValid (ATTexCoord _) accessor@(Accessor { accessorType = ATVec2 }) = floatOrNormalized accessor
+attributeAccessorIsValid (ATColor _) accessor@(Accessor { accessorType = ATVec3 }) = floatOrNormalized accessor
+attributeAccessorIsValid (ATColor _) accessor@(Accessor { accessorType = ATVec4 }) = floatOrNormalized accessor
+attributeAccessorIsValid (ATJoints _) (Accessor { accessorType = ATVec4, accessorComponentType = CTUnsignedByte, accessorNormalized = (fromMaybe False -> False) }) = True
+attributeAccessorIsValid (ATJoints _) (Accessor { accessorType = ATVec4, accessorComponentType = CTUnsignedShort, accessorNormalized = (fromMaybe False -> False) }) = True
+attributeAccessorIsValid (ATWeights _) accessor@(Accessor { accessorType = ATVec4 }) = floatOrNormalized accessor
+attributeAccessorIsValid _ _ = False
 
 instance FromJSON Accessor where
   parseJSON = genericParseJSON $ gltfOptions "accessor"

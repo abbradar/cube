@@ -20,6 +20,7 @@ import Data.GlTF.Types
 type NodeChildren = Vector NodeTree
 
 data NodeTree = NodeTree { nodeTreeNode :: Node
+                         , nodeTreeIndex :: NodeIndex
                          , nodeTreeChildren :: NodeChildren
                          }
               deriving (Show)
@@ -29,11 +30,11 @@ gltfNodeTree nodes = getChildren S.empty $ filter (not . (`S.member` childNodes)
   where childNodes = S.fromList $ concatMap (V.toList . fromMaybe V.empty . nodeChildren) $ V.toList nodes
 
         getChildren visited children = V.fromList <$> mapM (getNode visited) children
-        getNode visited nodeIndex
-          | nodeIndex `S.member` visited = Left "Cycle detected in nodes"
+        getNode visited nodeTreeIndex
+          | nodeTreeIndex `S.member` visited = Left "Cycle detected in nodes"
           | otherwise = do
-            when (nodeIndex < 0 || nodeIndex >= V.length nodes) $ Left [i|Node index #{nodeIndex} not found|]
-            let nodeTreeNode = nodes V.! nodeIndex
-                newVisited = S.insert nodeIndex visited
+            when (nodeTreeIndex < 0 || nodeTreeIndex >= V.length nodes) $ Left [i|Node index #{nodeTreeIndex} not found|]
+            let nodeTreeNode = nodes V.! nodeTreeIndex
+                newVisited = S.insert nodeTreeIndex visited
             nodeTreeChildren <- getChildren newVisited $ V.toList $ fromMaybe V.empty $ nodeChildren nodeTreeNode
             return NodeTree {..}

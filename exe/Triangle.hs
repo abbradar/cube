@@ -15,7 +15,6 @@ import Reflex.Host.Class
 import SDL hiding (Event)
 
 import Data.Aeson.Utils
-import qualified Data.GlTF.Resources as TF
 import Data.GLSL.Preprocessor
 import Cube.Types
 import Cube.Time
@@ -23,15 +22,16 @@ import Cube.Loop.Reflex
 import Cube.Graphics.Types
 import Cube.Graphics.Screen
 import Cube.Graphics.Camera
-import Cube.Graphics.Model
 import Cube.Graphics.Render
+import Cube.Graphics.Scene.Resources
+import Cube.Graphics.Scene.Runtime
 import Cube.Input.Events
 import Cube.Input.Keyboard
 import Cube.Input.Mouse
 
 data GameSettings = GameSettings { gameVertexShader :: FilePath
                                  , gameFragmentShader :: FilePath
-                                 , gameModels :: [FilePath]
+                                 , gameScene :: FilePath
                                  , gameInitialWidth :: Word
                                  , gameInitialHeight :: Word
                                  , gameNearPlane :: Float
@@ -57,7 +57,7 @@ data GameState = GameState { stateCamera :: CameraF
                            , statePreparedNodes :: PreparedNodes
                            }
 
-data GameInitialState = GameInitialState { initialNodes :: LoadedModel
+data GameInitialState = GameInitialState { initialGraph :: SceneGraph
                                          }
 
 data GameExtra t = GameExtra { gameResizeHandle :: EventHandle t (V2 Int)
@@ -83,7 +83,7 @@ main = do
 
   runCube $ do
     let basePath = takeDirectory settingsPath
-    modelsPromises <- liftIO $ mapM (async . TF.loadFiles . (basePath </>)) gameModels
+    initialScenePromise <- liftIO $ async $ runCube $ readSceneFiles (basePath </> gameScene)
     vertexShaderPromise <- liftIO $ async $ runCube $ readAndPreprocessShader (basePath </> gameVertexShader)
     fragShaderPromise <- liftIO $ async $ runCube $ readAndPreprocessShader (basePath </> gameFragmentShader)
 
@@ -104,11 +104,13 @@ main = do
     giveContext $ do
       Right vertexShader <- liftIO $ wait vertexShaderPromise
       Right fragShader <- liftIO $ wait fragShaderPromise
-      shaderCache <- newCubePipelineCache vertexShader fragShader
-      models <- liftIO $ mapM wait modelsPromises
-      modelNodes <- mconcat <$> mapM (loadModel shaderCache) models
+      sceneGraph <- newSceneGraph $ SceneOptions { sceneVertexShader = vertexShader
+                                                 , sceneFragmentShader = fragShader
+                                                 }
+      initialScene <- liftIO $ wait initialScenePromise
+      sceneGraph' <- addScene sceneGraph initialScene
 
-      let initialState = GameInitialState { initialNodes = modelNodes
+      let initialState = GameInitialState { initialGraph = sceneGraph'
                                           }
           gameWindow = GameWindow { gameWindow = window
                                   , gameFovRadians = gameFov * pi / 180
@@ -186,8 +188,8 @@ gameNetwork (GameWindow { gameSettings = GameSettings {..}, ..}) (GameInitialSta
   playerCamera <- foldDynM updateCamera mempty cameraStep
 
   let screen = fmap (\(V2 width height) -> perspectiveScreen gameFovRadians (fromIntegral width / fromIntegral height) gameNearPlane gameFarPlane) windowSize
-      nodes = constant initialNodes
-      preparedNodes = fmap prepareLoadedModel nodes
+      scene = constant initialGraph
+      preparedNodes = fmap prepareSceneGraph scene
 
       frameBehavior = GameState <$> current playerCamera <*> current screen <*> preparedNodes
 

@@ -1,12 +1,11 @@
--- | Resolve external resources and load everything into memeory.
+-- | Resolve external resources and load everything into memory.
 
 {-# LANGUAGE StrictData #-}
 
 module Data.GlTF.Resources
-  ( BoundBufferView(..)
-  , BoundBufferViews
-  , BoundGlTF(..)
-  , loadFiles
+  ( BoundGlTF(..)
+  , getBufferViewBuffer
+  , readModel
   ) where
 
 import Control.Applicative
@@ -19,10 +18,10 @@ import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
 import Data.Vector (Vector)
 import qualified Data.Vector as V
-import Data.HashMap.Strict (HashMap)
 import System.FilePath
 import qualified Data.Aeson as JSON
 import System.IO.Posix.MMap
+import Control.Monad.IO.Class
 import Codec.Picture (DynamicImage, decodeImage)
 import Codec.Picture.Jpg
 import Codec.Picture.Png
@@ -33,20 +32,13 @@ import Data.GlTF.Types as GlTF
 import Data.GlTF.Binary
 import Data.GlTF.URI
 
-data BoundBufferView = BoundBufferView { boundBufferView :: BufferView
-                                       , boundBufferRaw :: ByteString
-                                       }
-                     deriving (Show)
-
-type BoundBufferViews = HashMap BufferViewIndex BoundBufferView
-
 data BoundGlTF = BoundGlTF { boundGltf :: GlTF
-                           , boundBufferViews :: Vector BoundBufferView
+                           , boundBuffers :: Vector ByteString
                            , boundImages :: Vector DynamicImage
                            }
 
-loadUri :: FilePath -> Text -> IO (Maybe TypePair, ByteString)
-loadUri basePath uriStr =
+readUri :: FilePath -> Text -> IO (Maybe TypePair, ByteString)
+readUri basePath uriStr =
   case decodeGltfUri uriStr of
     Left err -> fail [i|Error while decoding URI: #{err}|]
     Right (GlFileURI path) -> do
@@ -60,8 +52,8 @@ loadUri basePath uriStr =
       return (media, file)
     Right (GlDataURI dataUri) -> return (fmap typePair $ uriMediaType dataUri, uriData dataUri)
 
-loadBuffers :: FilePath -> Maybe ByteString -> Vector Buffer -> IO (Vector ByteString)
-loadBuffers basePath maybeIntBuffer initBuffers = do
+readBuffers :: FilePath -> Maybe ByteString -> Vector Buffer -> IO (Vector ByteString)
+readBuffers basePath maybeIntBuffer initBuffers = do
   promises <- reverse <$> snd <$> foldlM doLoad (maybeIntBuffer, []) initBuffers
   V.fromList <$> mapM awaitBuffer promises
 
@@ -70,25 +62,24 @@ loadBuffers basePath maybeIntBuffer initBuffers = do
           where bufStr = B.take (bufferByteLength buf) intBuffer
         doLoad _ (Buffer { bufferUri = Nothing }) = fail "Invalid buffer with no URI"
         doLoad (_, ret) buf@(Buffer { bufferUri = Just bufferUri }) = do
-          bufPromise <- async $ B.take (bufferByteLength buf) <$> snd <$> loadUri basePath bufferUri
+          bufPromise <- async $ B.take (bufferByteLength buf) <$> snd <$> readUri basePath bufferUri
           return (Nothing, Right bufPromise : ret)
 
         awaitBuffer (Left buf) = return buf
         awaitBuffer (Right promise) = wait promise
 
-getBufferView :: Vector ByteString -> BufferView -> Either String BoundBufferView
-getBufferView buffers boundBufferView@(BufferView {..}) = do
+getBufferViewBuffer :: Vector ByteString -> BufferView -> Either String ByteString
+getBufferViewBuffer buffers (BufferView {..}) = do
   when (viewBuffer < 0 || viewBuffer >= V.length buffers) $ Left [i|Buffer index is invalid: #{viewBuffer}|]
   let buffer = buffers V.! viewBuffer
       offset = fromMaybe 0 viewByteOffset
   when (offset < 0) $ Left "Buffer view offset is less than zero"
   when (viewByteLength < 0) $ Left "Buffer view length is less than zero"
   when (offset + viewByteLength > B.length buffer) $ Left "Buffer view is off buffer bounds"
-  let boundBufferRaw = B.take viewByteLength $ B.drop offset buffer
-  return $ BoundBufferView {..}
+  return $ B.take viewByteLength $ B.drop offset buffer
 
-loadImage :: FilePath -> Vector BoundBufferView -> Image -> IO DynamicImage
-loadImage basePath bufferViews img = do
+loadImage :: FilePath -> Vector ByteString -> Vector BufferView -> Image -> IO DynamicImage
+loadImage basePath buffers bufferViews img = do
   let parseMediaType typStr =
         case decodeMediaType typStr of
           Left err -> fail [i|Cannot decode image media type: #{err}|]
@@ -97,10 +88,13 @@ loadImage basePath bufferViews img = do
   (media, file) <-
     case img of
       Image { imageUri = Just uri, imageBufferView = Nothing } -> do
-        (uriMedia, file) <- loadUri basePath uri
+        (uriMedia, file) <- readUri basePath uri
         return (imgMedia <|> uriMedia, file)
       Image { imageUri = Nothing, imageBufferView = Just idx } -> do
-        let file = boundBufferRaw $ bufferViews V.! idx
+        let bufferView = bufferViews V.! idx
+            stride = fromMaybe 0 $ viewByteStride bufferView
+        when (stride > 1) $ fail "Strides are not supported for image buffer views"
+        file <- either fail return $ getBufferViewBuffer buffers bufferView
         return (imgMedia, file)
       _ -> fail "Invalid image"
   let decode =
@@ -112,12 +106,12 @@ loadImage basePath bufferViews img = do
     Left err -> fail err
     Right rimg -> return rimg
 
-loadFiles :: FilePath -> IO BoundGlTF
-loadFiles path = do
+readModel :: (MonadFail m, MonadIO m) => FilePath -> m BoundGlTF
+readModel path = do
   (boundGltf, intBuffer) <-
     case map toLower $ snd $ splitExtension path of
       ".glb" -> do
-        file <- unsafeMMapFile path
+        file <- liftIO $ unsafeMMapFile path
         rawAsset <-
           case decodeGlb file of
             Left err -> fail [i|Failed to decode GLB: #{err}|]
@@ -128,17 +122,14 @@ loadFiles path = do
             Right r -> return r
         return (assetGltf asset, assetBuffer asset)
       ".gltf" -> do
-        res <- JSON.eitherDecodeFileStrict' path
+        res <- liftIO $ JSON.eitherDecodeFileStrict' path
         case res of
           Left e -> fail e
           Right glTF -> return (glTF, Nothing)
       ext -> fail [i|Unknown file extension: #{ext}|]
   unless (assetIsSupported GlTF.supportedVersion $ gltfAsset boundGltf) $ fail "Unsupported glTF version"
   let basePath = takeDirectory path
-  boundBuffers <- loadBuffers basePath intBuffer (fromMaybe V.empty $ gltfBuffers boundGltf)
-  boundBufferViews <-
-    case mapM (getBufferView boundBuffers) $ fromMaybe V.empty $ gltfBufferViews boundGltf of
-      Left e -> fail $ "Failed to bind buffer views: " ++ e
-      Right r -> return r
-  boundImages <- mapConcurrently (loadImage basePath boundBufferViews) $ fromMaybe V.empty $ gltfImages boundGltf
+  boundBuffers <- liftIO $ readBuffers basePath intBuffer (fromMaybe V.empty $ gltfBuffers boundGltf)
+  let bufferViews = fromMaybe V.empty $ gltfBufferViews boundGltf
+  boundImages <- liftIO $ mapConcurrently (loadImage basePath boundBuffers bufferViews) $ fromMaybe V.empty $ gltfImages boundGltf
   return BoundGlTF {..}
