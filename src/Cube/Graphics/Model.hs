@@ -6,6 +6,9 @@ module Cube.Graphics.Model
   ( NodeName
   , LoadedModel(..)
   , LoadedNodeTree(..)
+  , LoadedSampler(..)
+  , LoadedSamplerGroup(..)
+  , LoadedAnimation(..)
   , LoadedMesh(..)
   , TextureType(..)
   , LoadedPrimitive(..)
@@ -29,6 +32,7 @@ import Data.String.Interpolate
 import Data.Text (Text)
 import Data.Vector (Vector)
 import qualified Data.Vector as V
+import qualified Data.Vector.Storable as VS
 import qualified Data.Attoparsec.ByteString.Char8 as Atto
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as B
@@ -48,6 +52,7 @@ import Data.Vector.Hashable ()
 import qualified Data.GlTF.Types as TF
 import qualified Data.GlTF.Resources as TF
 import qualified Data.GlTF.Nodes as TF
+import qualified Data.GlTF.Accessors as TF
 import Cube.Types
 import Cube.Graphics.Types
 import Cube.Graphics.TRS
@@ -82,6 +87,22 @@ data LoadedMaterial = LoadedMaterial { lmatTextures :: HashMap TextureType (TF.A
                                      , lmatAlphaCutoff :: Maybe Float
                                      , lmatId :: MaterialId
                                      }
+
+data LoadedSampler a = LoadedSampler { lsampInputs :: VS.Vector Float
+                                     , lsampOutputs :: a
+                                     }
+                     deriving (Show, Eq)
+
+data LoadedSamplerGroup = LoadedSamplerGroup { samplerTranslation :: Maybe (LoadedSampler (VS.Vector V3F))
+                                             , samplerRotation :: Maybe (LoadedSampler (VS.Vector QF))
+                                             , samplerScale :: Maybe (LoadedSampler (VS.Vector V3F))
+                                             , samplerWeights :: Maybe (LoadedSampler (V.Vector (VS.Vector V3F)))
+                                             }
+                        deriving (Show, Eq)
+
+newtype LoadedAnimation = LoadedAnimation { lanimSamplers :: HashMap TF.NodeIndex LoadedSamplerGroup
+                                          }
+                        deriving (Show, Eq)
 
 nodeTransform :: TF.Node -> Either String TRSF
 nodeTransform (TF.Node { nodeMatrix = Just mtx, nodeRotation = Nothing, nodeScale = Nothing, nodeTranslation = Nothing }) = return $ matrixToTRS mtx
@@ -194,18 +215,22 @@ data PreparedAccessor = PreparedAccessor { preparedAccessor :: TF.Accessor
 
 type CubePipelineCache = PipelineCache ShaderKey PipelineMeta
 
-newtype LoadState = LoadState { currentBuffers :: IntMap Buffer
-                              }
+data LoadState = LoadState { currentBuffers :: IntMap Buffer
+                           , currentAccessorsData :: IntMap TF.AccessorRawData
+                           , currentPreparedAccessors :: IntMap PreparedAccessor
+                           }
 
 data LoadInfo = LoadInfo { infoPipelineCache :: CubePipelineCache
                          , infoSourceBuffers :: Vector ByteString
+                         , infoBufferViews :: Vector TF.BufferView
+                         , infoAccessors :: Vector TF.Accessor
                          }
 
 type ModelT m = StateT LoadState (ReaderT LoadInfo m)
 
-getBuffer :: MonadCube m => Int -> ModelT m Buffer
+getBuffer :: MonadCube m => TF.BufferIndex -> ModelT m Buffer
 getBuffer idx = do
-  buffers <- currentBuffers <$> get
+  buffers <- gets currentBuffers
   case IM.lookup idx buffers of
     Just buf -> return buf
     Nothing -> do
@@ -216,24 +241,51 @@ getBuffer idx = do
       modify $ \x -> x { currentBuffers = IM.insert idx buffer buffers }
       return buffer
 
+getAccessorData :: MonadCube m => TF.AccessorIndex -> ModelT m TF.AccessorRawData
+getAccessorData idx = do
+  accessors <- gets currentAccessorsData
+  case IM.lookup idx accessors of
+    Just acc -> return acc
+    Nothing -> do
+      LoadInfo {..} <- ask
+      let accessor = infoAccessors V.! idx
+      bufferIndex <-
+        case TF.accessorBufferView accessor of
+          Nothing -> fail "Sparse data in accessors is not supported"
+          Just bidx -> return bidx
+      let bufferView = infoBufferViews V.! bufferIndex
+      accessorData <- either fail return $ TF.readRawAccessorWithBuffer infoSourceBuffers bufferView accessor
+      modify $ \x -> x { currentAccessorsData = IM.insert idx accessorData accessors }
+      return accessorData
+
 getPipeline :: MonadCube m => ShaderKey -> ModelT m (PipelineMeta, LoadedPipeline)
 getPipeline key = do
   plCache <- asks infoPipelineCache
   (meta, pl) <- getOrCompilePipeline getPipelineMeta key plCache
   return (meta, pl)
 
-prepareAccessor :: MonadCube m => Vector TF.BufferView -> TF.Accessor -> ModelT m PreparedAccessor
-prepareAccessor bufferViews preparedAccessor@(TF.Accessor { accessorSparse = Nothing, accessorBufferView = Just bufferIndex, .. }) = do
-  let bufferView@TF.BufferView {..} = bufferViews V.! bufferIndex
-  -- Validate that buffer view can be bound.
-  unless (TF.accessorIsValid bufferView preparedAccessor) $ fail "Buffer view is off buffer bounds"
-  buffer <- getBuffer viewBuffer
-  return $ PreparedAccessor { preparedOffset = fromMaybe 0 viewByteOffset + fromMaybe 0 accessorByteOffset
-                            , preparedStride = fromMaybe 0 viewByteStride
-                            , preparedBuffer = buffer
-                            , preparedAccessor
-                            }
-prepareAccessor _ _ = fail "Sparse data in accessors is not supported"
+getPreparedAccessor :: MonadCube m => TF.AccessorIndex -> ModelT m PreparedAccessor
+getPreparedAccessor idx = do
+  accessors <- gets currentPreparedAccessors
+  case IM.lookup idx accessors of
+    Just acc -> return acc
+    Nothing -> do
+      LoadInfo {..} <- ask
+      let accessor = infoAccessors V.! idx
+      bufferIndex <-
+        case TF.accessorBufferView accessor of
+          Nothing -> fail "Sparse data in accessors is not supported"
+          Just bidx -> return bidx
+      let bufferView = infoBufferViews V.! bufferIndex
+      unless (TF.accessorIsValid bufferView accessor) $ fail "Buffer view is off buffer bounds"
+      buffer <- getBuffer $ TF.viewBuffer bufferView
+      let prepared = PreparedAccessor { preparedOffset = fromMaybe 0 (TF.viewByteOffset bufferView) + fromMaybe 0 (TF.accessorByteOffset accessor)
+                                      , preparedStride = fromMaybe 0 (TF.viewByteStride bufferView)
+                                      , preparedBuffer = buffer
+                                      , preparedAccessor = accessor
+                                      }
+      modify $ \x -> x { currentPreparedAccessors = IM.insert idx prepared accessors }
+      return prepared
 
 countAttributes :: [Int] -> Either String Int
 countAttributes [] = return 0
@@ -258,20 +310,24 @@ data ShaderKey = ShaderKey { shaderHasNormals :: Bool
                            }
                deriving (Show, Eq, Ord, Generic, Typeable, Hashable)
 
-primitiveShaderKey :: LoadedMaterial -> Vector PreparedAccessor -> TF.Primitive -> Either String ShaderKey
-primitiveShaderKey (LoadedMaterial {..}) accessors (TF.Primitive {..}) = do
-  let countAttributeType f = countAttributes $ mapMaybe f $ HM.keys primitiveAttributes
+primitiveShaderKey :: MonadCube m => LoadedMaterial -> TF.Primitive -> ModelT m ShaderKey
+primitiveShaderKey (LoadedMaterial {..}) (TF.Primitive {..}) = do
+  let countAttributeType f = either fail return $ countAttributes $ mapMaybe f $ HM.keys primitiveAttributes
       colorIndices = mapMaybe (\case TF.ATColor idx -> Just idx; _ -> Nothing) $ HM.keys primitiveAttributes
 
   texCoordsCount <- countAttributeType $ \case TF.ATTexCoord idx -> Just idx; _ -> Nothing
-  colorsCount <- countAttributes colorIndices
+  colorsCount <- either fail return $ countAttributes colorIndices
   jointsCount <- countAttributeType $ \case TF.ATJoints idx -> Just idx; _ -> Nothing
   weightsCount <- countAttributeType $ \case TF.ATWeights idx -> Just idx; _ -> Nothing
 
-  let vecCount TF.ATVec3 = Right 3
-      vecCount TF.ATVec4 = Right 4
-      vecCount _ = Left "Invalid accessor type for color attribute"
-  colorComponents <- mapM (\idx -> vecCount $ TF.accessorType $ preparedAccessor $ accessors V.! idx) colorIndices
+  let getColorComponent idx = do
+        accessors <- asks infoAccessors
+        case TF.accessorType (accessors V.! idx) of
+          TF.ATVec3 -> return 3
+          TF.ATVec4 -> return 4
+          _ -> fail "Invalid accessor type for color attribute"
+
+  colorComponents <- mapM getColorComponent colorIndices
 
   let getTexCoord (attrIdx, _tex)
         | attrIdx >= texCoordsCount = Nothing
@@ -340,28 +396,27 @@ loadMaterial textures index (TF.Material {..}) =
 defaultMaterial :: LoadedMaterial
 defaultMaterial = loadMaterial V.empty (-1) TF.defaultMaterial
 
-loadPrimitive :: MonadCube m => Vector LoadedMaterial -> Vector PreparedAccessor -> TF.Primitive -> ModelT m (Maybe LoadedPrimitive)
-loadPrimitive materials accessors primitive@(TF.Primitive {..})
+loadPrimitive :: MonadCube m => Vector LoadedMaterial -> TF.Primitive -> ModelT m (Maybe LoadedPrimitive)
+loadPrimitive materials primitive@(TF.Primitive {..})
   | not (TF.ATPosition `HM.member` primitiveAttributes) = return Nothing
   | otherwise = do
-      forM_ (HM.toList primitiveAttributes) $ \(typ, accessorIndex) -> do
-        let accessor = accessors V.! accessorIndex
-        unless (TF.attributeAccessorIsValid typ $ preparedAccessor accessor) $ fail "Invalid accessor for this attribute type"
-
       let material = maybe defaultMaterial (materials V.!) primitiveMaterial
 
-      shaderKey <- either fail return $ primitiveShaderKey material accessors primitive
+      shaderKey <- primitiveShaderKey material primitive
       (meta, pl) <- getPipeline shaderKey
 
       primitivesVAO <- newVAO
       (numIndices, sourceData) <-
             case primitiveIndices of
-              Nothing ->
-                let PreparedAccessor {..} = accessors V.! (primitiveAttributes HM.! TF.ATPosition)
-                    src = Primitives { firstIndex = 0 }
-                in return (TF.accessorCount preparedAccessor, src)
+              Nothing -> do
+                let accessorIndex = primitiveAttributes HM.! TF.ATPosition
+                PreparedAccessor {..} <- getPreparedAccessor accessorIndex
+                unless (TF.attributeAccessorIsValid TF.ATPosition preparedAccessor) $ fail "Invalid accessor for this attribute type"
+
+                let src = Primitives { firstIndex = 0 }
+                return (TF.accessorCount preparedAccessor, src)
               Just indicesIndex -> do
-                let PreparedAccessor {..} = accessors V.! indicesIndex
+                PreparedAccessor {..} <- getPreparedAccessor indicesIndex
                 unless (preparedStride == 0) $ fail "Strides for indice accessors are not supported"
                 indicesType <-
                   case TF.accessorComponentType preparedAccessor of
@@ -382,8 +437,10 @@ loadPrimitive materials accessors primitive@(TF.Primitive {..})
 
       forM_ (HM.toList $ pipelineAttributes meta) $ \(typ, plAttrIndex) -> do
         let accessorIndex = primitiveAttributes HM.! typ
-            PreparedAccessor { preparedAccessor = TF.Accessor {..}, ..} = accessors V.! accessorIndex
-            sourcing = defaultSourcing { offset = preparedOffset
+        PreparedAccessor { preparedAccessor = accessor@TF.Accessor {..}, ..} <- getPreparedAccessor accessorIndex
+        unless (TF.attributeAccessorIsValid typ $ accessor) $ fail "Invalid accessor for this attribute type"
+
+        let sourcing = defaultSourcing { offset = preparedOffset
                                        , components = TF.accessorComponentsNumber accessorType
                                        , stride = preparedStride
                                        , normalize = fromMaybe False accessorNormalized
@@ -391,7 +448,6 @@ loadPrimitive materials accessors primitive@(TF.Primitive {..})
                                        , attributeIndex = plAttrIndex
                                        , integerMapping = TF.attributeIsIntegral typ
                                        }
-
         sourceVertexData preparedBuffer sourcing primitivesVAO
 
       return $ Just LoadedPrimitive { lprimPipelineMeta = meta
@@ -400,9 +456,9 @@ loadPrimitive materials accessors primitive@(TF.Primitive {..})
                                     , lprimDrawCommand = primDrawCommand
                                     }
 
-loadMesh :: MonadCube m => Vector LoadedMaterial -> Vector PreparedAccessor -> TF.Mesh -> ModelT m (Maybe LoadedMesh)
-loadMesh materials accessors (TF.Mesh {..}) = do
-  lmeshPrimitives <- V.fromList <$> catMaybes <$> mapM (loadPrimitive materials accessors) (V.toList meshPrimitives)
+loadMesh :: MonadCube m => Vector LoadedMaterial -> TF.Mesh -> ModelT m (Maybe LoadedMesh)
+loadMesh materials (TF.Mesh {..}) = do
+  lmeshPrimitives <- V.fromList <$> catMaybes <$> mapM (loadPrimitive materials) (V.toList meshPrimitives)
   if V.null lmeshPrimitives then
     return Nothing
   else
@@ -490,9 +546,6 @@ getPipelineMeta (LoadedPipeline {..}) = do
 
 loadModel' :: forall m. MonadCube m => TF.BoundGlTF -> ModelT m (Vector LoadedNodeTree)
 loadModel' (TF.BoundGlTF {..}) = do
-  let bufferViews = fromMaybe V.empty $ TF.gltfBufferViews boundGltf
-  accessors <- mapM (prepareAccessor bufferViews) $ fromMaybe V.empty $ TF.gltfAccessors boundGltf
-
   imageBuffers <- mapM loadImageBuffer boundImages
   let samplers = fromMaybe V.empty $ TF.gltfSamplers boundGltf
   textures <- mapM (loadTexture imageBuffers samplers) $ fromMaybe V.empty $ TF.gltfTextures boundGltf
@@ -505,7 +558,7 @@ loadModel' (TF.BoundGlTF {..}) = do
           case nodeTransform nodeTreeNode of
             Left e -> fail $ "Failed to read node transformation values: " ++ e
             Right r -> return r
-        let runLoadMesh meshIndex = loadMesh materials accessors mesh
+        let runLoadMesh meshIndex = loadMesh materials mesh
               where mesh = meshes V.! meshIndex
         lnodeMesh <- join <$> mapM runLoadMesh (TF.nodeMesh nodeTreeNode)
         lnodeChildren <- mapM loadNode nodeTreeChildren
@@ -522,9 +575,13 @@ loadModel' (TF.BoundGlTF {..}) = do
 loadModel :: forall m. MonadCube m => PipelineCache ShaderKey PipelineMeta -> TF.BoundGlTF -> m LoadedModel
 loadModel plCache bound = do
   let initial = LoadState { currentBuffers = IM.empty
+                          , currentAccessorsData = IM.empty
+                          , currentPreparedAccessors = IM.empty
                           }
       info = LoadInfo { infoPipelineCache = plCache
                       , infoSourceBuffers = TF.boundBuffers bound
+                      , infoBufferViews = fromMaybe V.empty $ TF.gltfBufferViews $ TF.boundGltf bound
+                      , infoAccessors = fromMaybe V.empty $ TF.gltfAccessors $ TF.boundGltf bound
                       }
   nodes <- flip runReaderT info $ flip evalStateT initial $ loadModel' bound
   return LoadedModel { loadedNodes = nodes
