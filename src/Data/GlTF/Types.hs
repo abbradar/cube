@@ -147,6 +147,7 @@ data GlTF = GlTF { gltfAsset :: Asset
                  , gltfTextures :: Maybe (Vector Texture)
                  , gltfImages :: Maybe (Vector Image)
                  , gltfMaterials :: Maybe (Vector Material)
+                 , gltfAnimations :: Maybe (Vector Animation)
                  , gltfExtras :: Maybe ExtrasMap
                  }
           deriving (Show, Generic)

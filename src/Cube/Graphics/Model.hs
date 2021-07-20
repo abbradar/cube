@@ -100,7 +100,22 @@ data LoadedSamplerGroup = LoadedSamplerGroup { samplerTranslation :: Maybe (Load
                                              }
                         deriving (Show, Eq)
 
-newtype LoadedAnimation = LoadedAnimation { lanimSamplers :: HashMap TF.NodeIndex LoadedSamplerGroup
+emptyLoadedSamplerGroup :: LoadedSamplerGroup
+emptyLoadedSamplerGroup = LoadedSamplerGroup { samplerTranslation = Nothing
+                                             , samplerRotation = Nothing
+                                             , samplerScale = Nothing
+                                             , samplerWeights = Nothing
+                                             }
+
+unionLoadedSamplerGroup :: LoadedSamplerGroup -> LoadedSamplerGroup -> LoadedSamplerGroup
+unionLoadedSamplerGroup a b = LoadedSamplerGroup { samplerTranslation = liftU2 failUnion (samplerTranslation a) (samplerTranslation b)
+                                                 , samplerRotation = liftU2 failUnion (samplerRotation a) (samplerRotation b)
+                                                 , samplerScale = liftU2 failUnion (samplerScale a) (samplerScale b)
+                                                 , samplerWeights = liftU2 failUnion (samplerWeights a) (samplerWeights b)
+                                                 }
+  where failUnion _ _ = error "Can't have same animation target specified for the same node"
+
+newtype LoadedAnimation = LoadedAnimation { lanimNodes :: HashMap TF.NodeIndex LoadedSamplerGroup
                                           }
                         deriving (Show, Eq)
 
@@ -287,6 +302,47 @@ getPreparedAccessor idx = do
       modify $ \x -> x { currentPreparedAccessors = IM.insert idx prepared accessors }
       return prepared
 
+loadAnimation :: forall m. MonadCube m => TF.Animation -> ModelT m LoadedAnimation
+loadAnimation (TF.Animation {..}) = do
+  nodes <- fmap (HM.fromListWith unionLoadedSamplerGroup . catMaybes) $ mapM loadTarget $ V.toList animationChannels
+  return $ LoadedAnimation { lanimNodes = nodes }
+
+  where loadTarget :: TF.Channel -> ModelT m (Maybe (TF.NodeIndex, LoadedSamplerGroup))
+        loadTarget (TF.Channel { channelTarget = TF.Target { targetNode = Just nodeIndex, .. }, .. }) = do
+          let TF.AnimationSampler {..} = animationSamplers V.! channelSampler
+          rawInputData <- getAccessorData animationSamplerInput
+          lsampInputs <-
+            case rawInputData of
+              TF.ARFloat (TF.ARScalar vec) -> return vec
+              _ -> fail "Invalid data type for animation sampler input"
+          rawOutputData <- getAccessorData animationSamplerOutput
+          group <-
+            case targetPath of
+              TF.TPTranslation -> do
+                lsampOutputs <-
+                  case rawOutputData of
+                    TF.ARFloat (TF.ARVec3 vec) -> return vec
+                    _ -> fail "Invalid data type for translation animation sampler output"
+                let sampler = LoadedSampler {..}
+                return $ emptyLoadedSamplerGroup { samplerTranslation = Just sampler }
+              TF.TPRotation -> do
+                lsampOutputs <-
+                  case TF.normalizeAccessorData rawOutputData of
+                    TF.ARVec4 vec -> return $ VS.map (\(V4 a x y z) -> Quaternion a (V3 x y z)) vec
+                    _ -> fail "Invalid data type for rotation animation sampler output"
+                let sampler = LoadedSampler {..}
+                return $ emptyLoadedSamplerGroup { samplerRotation = Just sampler }
+              TF.TPScale -> do
+                lsampOutputs <-
+                  case TF.normalizeAccessorData rawOutputData of
+                    TF.ARVec3 vec -> return vec
+                    _ -> fail "Invalid data type for scale animation sampler output"
+                let sampler = LoadedSampler {..}
+                return $ emptyLoadedSamplerGroup { samplerScale = Just sampler }
+              TF.TPWeights -> fail "FIXME: Morph targets are not yet supported"
+          return $ Just (nodeIndex, group)
+        loadTarget _ = return Nothing
+
 countAttributes :: [Int] -> Either String Int
 countAttributes [] = return 0
 countAttributes idxs
@@ -465,6 +521,7 @@ loadMesh materials (TF.Mesh {..}) = do
     return $ Just $ LoadedMesh {..}
 
 data LoadedModel = LoadedModel { loadedNodes :: Vector LoadedNodeTree
+                               , loadedAnimations :: Vector LoadedAnimation
                                }
 
 data PipelineMeta = PipelineMeta { pipelineAttributes :: HashMap TF.AttributeType AttributeLocation
@@ -544,7 +601,7 @@ getPipelineMeta (LoadedPipeline {..}) = do
         return $ foldr ($) initialMeta plUniformUpdates
   either fail return run
 
-loadModel' :: forall m. MonadCube m => TF.BoundGlTF -> ModelT m (Vector LoadedNodeTree)
+loadModel' :: forall m. MonadCube m => TF.BoundGlTF -> ModelT m (Vector LoadedNodeTree, Vector LoadedAnimation)
 loadModel' (TF.BoundGlTF {..}) = do
   imageBuffers <- mapM loadImageBuffer boundImages
   let samplers = fromMaybe V.empty $ TF.gltfSamplers boundGltf
@@ -570,7 +627,10 @@ loadModel' (TF.BoundGlTF {..}) = do
     case TF.gltfNodeTree $ fromMaybe V.empty $ TF.gltfNodes boundGltf of
       Left e -> fail $ "Failed to build node tree: " ++ e
       Right r -> return r
-  mapM loadNode treeNodes
+
+  nodes <- mapM loadNode treeNodes
+  animations <- mapM loadAnimation $ fromMaybe V.empty $ TF.gltfAnimations boundGltf
+  return (nodes, animations)
 
 loadModel :: forall m. MonadCube m => PipelineCache ShaderKey PipelineMeta -> TF.BoundGlTF -> m LoadedModel
 loadModel plCache bound = do
@@ -583,6 +643,7 @@ loadModel plCache bound = do
                       , infoBufferViews = fromMaybe V.empty $ TF.gltfBufferViews $ TF.boundGltf bound
                       , infoAccessors = fromMaybe V.empty $ TF.gltfAccessors $ TF.boundGltf bound
                       }
-  nodes <- flip runReaderT info $ flip evalStateT initial $ loadModel' bound
+  (nodes, animations) <- flip runReaderT info $ flip evalStateT initial $ loadModel' bound
   return LoadedModel { loadedNodes = nodes
+                     , loadedAnimations = animations
                      }
