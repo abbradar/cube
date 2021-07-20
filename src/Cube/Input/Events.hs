@@ -9,6 +9,7 @@ module Cube.Input.Events
   , subfanKeyboardEvent
   ) where
 
+import Data.Maybe
 import Data.Functor.Misc
 import Data.Functor.Identity
 import Data.GADT.Compare.TH (deriveGEq, deriveGCompare)
@@ -116,8 +117,10 @@ fanSDLEvent event = fan $ fmap (uncurry splitSDLEvent) event
 
 type KeyboardEventSelector t = EventSelector t (Const2 Keycode (TimeStep, KeyboardEventData))
 
-splitKeyboardEvent :: TimeStep -> KeyboardEventData -> Map Keycode (TimeStep, KeyboardEventData)
-splitKeyboardEvent step event = M.singleton (keysymKeycode $ keyboardEventKeysym event) (step, event)
+splitKeyboardEvent :: TimeStep -> KeyboardEventData -> Maybe (Map Keycode (TimeStep, KeyboardEventData))
+splitKeyboardEvent step event
+  | isJust $ keyboardEventWindow event = Just $ M.singleton (keysymKeycode $ keyboardEventKeysym event) (step, event)
+  | otherwise = Nothing
 
 subfanKeyboardEvent :: Reflex t => EventSelector t EventKey -> KeyboardEventSelector t
-subfanKeyboardEvent selector = fanMap $ fmap (uncurry splitKeyboardEvent) $ select selector KeyboardEventKey
+subfanKeyboardEvent selector = fanMap $ fmapMaybe (uncurry splitKeyboardEvent) $ select selector KeyboardEventKey
