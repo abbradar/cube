@@ -17,9 +17,30 @@
             "mesh" : 0,
             "name" : "Cube",
             "translation" : [
-                2.2377424240112305,
-                2.3634066581726074,
-                -10.56017017364502
+                1,
+                0,
+                -1
+            ]
+        }
+    ],
+    "animations" : [
+        {
+            "channels" : [
+                {
+                    "sampler" : 0,
+                    "target" : {
+                        "node" : 0,
+                        "path" : "translation"
+                    }
+                }
+            ],
+            "name" : "idle",
+            "samplers" : [
+                {
+                    "input" : 4,
+                    "interpolation" : "LINEAR",
+                    "output" : 5
+                }
             ]
         }
     ],
@@ -99,6 +120,24 @@
             "componentType" : 5123,
             "count" : 36,
             "type" : "SCALAR"
+        },
+        {
+            "bufferView" : 4,
+            "componentType" : 5126,
+            "count" : 61,
+            "max" : [
+                2.5
+            ],
+            "min" : [
+                0
+            ],
+            "type" : "SCALAR"
+        },
+        {
+            "bufferView" : 5,
+            "componentType" : 5126,
+            "count" : 61,
+            "type" : "VEC3"
         }
     ],
     "bufferViews" : [
@@ -121,6 +160,16 @@
             "buffer" : 0,
             "byteLength" : 72,
             "byteOffset" : 768
+        },
+        {
+            "buffer" : 0,
+            "byteLength" : 244,
+            "byteOffset" : 840
+        },
+        {
+            "buffer" : 0,
+            "byteLength" : 732,
+            "byteOffset" : 1084
         }
     ],
     "samplers" : [
@@ -131,8 +180,8 @@
     ],
     "buffers" : [
         {
-            "byteLength" : 840,
-            "uri" : "cube_test_sep.bin"
+            "byteLength" : 1816,
+            "uri" : "cube_test.bin"
         }
     ]
 }

@@ -80,7 +80,7 @@ advanceSamplerState currentTime (LoadedSampler {..})
         nowValue =
           case lsampInterpolation of
             TF.ASIStep -> startLinearOutput
-            TF.ASILinear -> fmapUnbox (* linearK) startLinearOutput + fmapUnbox (* (1 - linearK)) endLinearOutput
+            TF.ASILinear -> fmapUnbox (* linearK) endLinearOutput + fmapUnbox (* (1 - linearK)) startLinearOutput
             TF.ASICubicSpline -> error "FIXME: Cubic splines are not supported now"
 
         findNewIndex i

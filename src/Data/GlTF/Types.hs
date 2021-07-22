@@ -612,7 +612,7 @@ data TargetPath = TPTranslation | TPRotation | TPScale | TPWeights
                 deriving (Show, Eq, Ord, Bounded, Enum, Generic, Hashable)
 
 instance FromJSON TargetPath where
-  parseJSON = genericParseJSON $ defaultOptions { constructorTagModifier = map toUpper . removePrefix "TP"
+  parseJSON = genericParseJSON $ defaultOptions { constructorTagModifier = map toLower . removePrefix "TP"
                                                 }
 
 data Target = Target { targetNode :: Maybe NodeIndex

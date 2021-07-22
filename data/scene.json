@@ -1,6 +1,6 @@
 {
   "models": {
-    "cube": "models/cube_test_sep.gltf"
+    "cube": "models/cube_test.gltf"
   },
   "graph": [
     {
