@@ -11,12 +11,12 @@ module Cube.Graphics.Animation
   , startAnimation
   , advanceAnimation
   , groupAnimationMorph
-  , nodeAnimationMorph
   ) where
 
+import Data.Maybe
 import qualified Data.Vector.Storable as VS
 import qualified Data.Vector.Generic as VG
-import qualified Data.HashMap.Strict as HM
+import qualified Data.IntMap.Strict as IM
 import Linear
 
 import Data.Int
@@ -43,11 +43,11 @@ instance UpdateAnimation LoadedSamplerGroup where
   {-# INLINE updateAnimation #-}
 
 instance UpdateAnimation LoadedAnimation where
-  updateAnimation f anim = anim { lanimNodes = HM.map (updateAnimation f) $ lanimNodes anim }
+  updateAnimation f anim = anim { lanimNodes = IM.map (updateAnimation f) $ lanimNodes anim }
   {-# INLINE updateAnimation #-}
 
 data AnimationState = AnimationState { astateAnimation :: LoadedAnimation SamplerState
-                                     , astateSince :: Timestamp
+                                     , astateSince :: Maybe Timestamp
                                      , astateFinished :: Bool
                                      , astateLoop :: Bool
                                      }
@@ -90,12 +90,14 @@ advanceSamplerState currentTime (LoadedSampler {..})
 {-# INLINE advanceSamplerState #-}
 
 advanceAnimation :: Timestamp -> AnimationState -> AnimationState
-advanceAnimation ts state@(AnimationState {..})
+advanceAnimation currentTime state@(AnimationState {..})
   | astateFinished = state
+  -- Set `since` here, because if `since` is not set this condititon will always fire.
+  | newNow <= lanimBeginning astateAnimation = state { astateSince = Just since }
   | newNow >= lanimEnd astateAnimation =
     if astateLoop then
       state { astateAnimation = updateAnimation loopState astateAnimation
-            , astateSince = loopedNewSince
+            , astateSince = Just loopedNewSince
             }
     else
       state { astateAnimation = updateAnimation (advanceSamplerState newNow) astateAnimation
@@ -103,10 +105,11 @@ advanceAnimation ts state@(AnimationState {..})
             }
   | otherwise = state { astateAnimation = updateAnimation (advanceSamplerState newNow) astateAnimation }
 
-  where newNow = intervalSeconds (ts - astateSince)
+  where newNow = intervalSeconds (currentTime - since)
+        since = fromMaybe currentTime astateSince
 
         loopedNow = newNow - lanimEnd astateAnimation * fromIntegral (floor (newNow / lanimEnd astateAnimation) :: Int32)
-        loopedNewSince = ts - secondsInterval loopedNow
+        loopedNewSince = currentTime - secondsInterval loopedNow
 
         loopState :: forall component container. (Num (component Float), VG.Vector container (component Float), UnboxFunctor component) => LoadedSampler container component SamplerState -> SamplerState container component
         loopState sampler = advanceSamplerState loopedNow $ sampler { lsampMeta = (lsampMeta sampler) { sstateIndex = 0 } }
@@ -117,8 +120,8 @@ data AnimationOptions = AnimationOptions { aoptsLoop :: Bool }
 defaultAnimationOptions :: AnimationOptions
 defaultAnimationOptions = AnimationOptions { aoptsLoop = False }
 
-startAnimation :: Timestamp -> LoadedAnimation EmptySamplerState -> AnimationOptions -> AnimationState
-startAnimation astateSince animation (AnimationOptions {..}) =
+startAnimation :: AnimationOptions -> Maybe Timestamp -> LoadedAnimation EmptySamplerState -> AnimationState
+startAnimation (AnimationOptions {..}) astateSince animation =
   AnimationState { astateFinished = lanimEnd animation == 0
                  , astateLoop = aoptsLoop
                  , astateSince
@@ -136,6 +139,3 @@ groupAnimationMorph (LoadedSamplerGroup {..}) =
       , trsRotation = maybe (Quaternion 1 0) (sstateNow . lsampMeta) samplerRotation
       , trsScale = maybe 1 (sstateNow . lsampMeta) samplerScale
       }
-
-nodeAnimationMorph :: TF.NodeIndex -> LoadedAnimation SamplerState -> Maybe TRSF
-nodeAnimationMorph nodeIndex = fmap groupAnimationMorph . HM.lookup nodeIndex . lanimNodes

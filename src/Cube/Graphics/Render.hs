@@ -12,7 +12,7 @@ module Cube.Graphics.Render
   , runDrawPreparedNodes
   ) where
 
-import Data.Maybe
+import Data.IORef
 import Control.Monad
 import Data.IntMap.Strict (IntMap)
 import qualified Data.IntMap.Strict as IM
@@ -29,6 +29,7 @@ import Cube.Graphics.TRS
 import Cube.Graphics.Model
 import Cube.Graphics.Screen
 import Cube.Graphics.Camera
+import Cube.Graphics.Animation
 import Cube.Graphics.ShadersCache
 import Cube.Graphics.Scene.Runtime
 
@@ -87,58 +88,61 @@ instance Semigroup HalfPreparedPipeline where
 
 type PreparedNodes = IntMap PreparedPipeline
 
-prepareSceneGraphModel :: TRSF -> SceneGraphModel -> PreparedNodes
-prepareSceneGraphModel initialTrs (SceneGraphModel {..}) = flip execState IM.empty $ mapM_ (go initialTrs) $ loadedNodes sgmModel
-  where go :: TRSF -> LoadedNodeTree -> State PreparedNodes ()
-        go parentTrs (LoadedNodeTree {..}) = do
-          let trs = parentTrs <> lnodeTrs
-              trsMatrix = trsToMatrix trs
-          case lnodeMesh of
-            Nothing -> return ()
-            Just (LoadedMesh {..}) -> do
-              let halfMapPrimitive (LoadedPrimitive {..}) = (pipelineId lprimPipelineMeta, preparedPl)
-                    where LoadedMaterial {..} = lprimMaterial
-                          preparedPl = HalfPreparedPipeline { halfPreparedPipeline = lprimPipeline
-                                                            , halfPreparedMeta = lprimPipelineMeta
-                                                            , halfPreparedMaterialMeshes = HM.singleton (sgmId, lmatId) preparedMeshes
-                                                            }
-                          preparedMeshes = HalfPreparedMaterialMeshes { halfPreparedMaterial = lprimMaterial
-                                                                      , halfPreparedCommands = [lprimDrawCommand]
-                                                                      }
+prepareSceneGraphModel :: forall m. MonadCube m => TRSF -> ModelInstance -> StateT PreparedNodes m ()
+prepareSceneGraphModel initialTrs (ModelInstance { instanceModel = SceneGraphModel {..}, .. }) = do
+  animationNodes <-
+    case instanceAnimationRef of
+      Nothing -> return IM.empty
+      Just animRef -> fmap (lanimNodes . astateAnimation) $ liftIO $ readIORef animRef
 
-                  finalizePipeline (HalfPreparedPipeline {..}) =
-                    PreparedPipeline { preparedPipeline = halfPreparedPipeline
-                                     , preparedMeta = halfPreparedMeta
-                                     , preparedMaterialMeshes = HM.map finalizeMaterialMeshes halfPreparedMaterialMeshes
-                                     }
+  let go :: TRSF -> LoadedNodeTree -> StateT PreparedNodes m ()
+      go parentTrs (LoadedNodeTree {..}) = do
+        let animTrs = maybe mempty groupAnimationMorph $ IM.lookup lnodeIndex animationNodes
+            trs = parentTrs <> lnodeTrs <> animTrs
+            trsMatrix = trsToMatrix trs
+        case lnodeMesh of
+          Nothing -> return ()
+          Just (LoadedMesh {..}) -> do
+            let halfMapPrimitive (LoadedPrimitive {..}) = (pipelineId lprimPipelineMeta, preparedPl)
+                  where LoadedMaterial {..} = lprimMaterial
+                        preparedPl = HalfPreparedPipeline { halfPreparedPipeline = lprimPipeline
+                                                          , halfPreparedMeta = lprimPipelineMeta
+                                                          , halfPreparedMaterialMeshes = HM.singleton (sgmId, lmatId) preparedMeshes
+                                                          }
+                        preparedMeshes = HalfPreparedMaterialMeshes { halfPreparedMaterial = lprimMaterial
+                                                                    , halfPreparedCommands = [lprimDrawCommand]
+                                                                    }
 
-                  finalizeMaterialMeshes (HalfPreparedMaterialMeshes {..}) =
-                    PreparedMaterialMeshes { preparedTextures = IM.fromList $ map (\(typ, (_subIdx, tex)) -> (fromEnum typ, tex)) $ HM.toList lmatTextures
-                                           , preparedMaterial = halfPreparedMaterial
-                                           , preparedFragmentPassTests = defaultFragmentPassTests { cullFace = if lmatDoubleSided then NoCulling else Back
-                                                                                                  , writeDepth = True
-                                                                                                  , depthTest = Just Less
-                                                                                                  }
-                                           , preparedMeshes = [preparedMesh]
-                                           }
+                finalizePipeline (HalfPreparedPipeline {..}) =
+                  PreparedPipeline { preparedPipeline = halfPreparedPipeline
+                                   , preparedMeta = halfPreparedMeta
+                                   , preparedMaterialMeshes = HM.map finalizeMaterialMeshes halfPreparedMaterialMeshes
+                                   }
 
-                    where LoadedMaterial {..} = halfPreparedMaterial
-                          preparedMesh = PreparedMesh { preparedModelMatrix = trsMatrix
-                                                      , preparedDrawCommands = halfPreparedCommands
-                                                      }
+                finalizeMaterialMeshes (HalfPreparedMaterialMeshes {..}) =
+                  PreparedMaterialMeshes { preparedTextures = IM.fromList $ map (\(typ, (_subIdx, tex)) -> (fromEnum typ, tex)) $ HM.toList lmatTextures
+                                         , preparedMaterial = halfPreparedMaterial
+                                         , preparedFragmentPassTests = defaultFragmentPassTests { cullFace = if lmatDoubleSided then NoCulling else Back
+                                                                                                , writeDepth = True
+                                                                                                , depthTest = Just Less
+                                                                                                }
+                                         , preparedMeshes = [preparedMesh]
+                                         }
 
-              let prepared = IM.map finalizePipeline $ IM.fromListWith (<>) $ map halfMapPrimitive $ V.toList lmeshPrimitives
-              modify' $ IM.unionWith (<>) prepared
+                  where LoadedMaterial {..} = halfPreparedMaterial
+                        preparedMesh = PreparedMesh { preparedModelMatrix = trsMatrix
+                                                    , preparedDrawCommands = halfPreparedCommands
+                                                    }
 
-          mapM_ (go trs) lnodeChildren
+            let prepared = IM.map finalizePipeline $ IM.fromListWith (<>) $ map halfMapPrimitive $ V.toList lmeshPrimitives
+            modify' $ IM.unionWith (<>) prepared
 
-prepareSceneGraph :: SceneGraph -> PreparedNodes
-prepareSceneGraph sg = foldr (IM.unionWith (<>)) IM.empty $ concatMap (go mempty) (V.toList $ sgGraph sg)
-  where go :: TRSF -> SceneGraphNode -> [PreparedNodes]
-        go parentTrs (SceneGraphNode {..}) =
-          let trs = parentTrs <> sgnTrs
-              mmodel = fmap (prepareSceneGraphModel trs) sgnModel
-          in maybeToList mmodel ++ concatMap (go trs) (V.toList sgnChildren)
+        mapM_ (go trs) lnodeChildren
+
+  mapM_ (go initialTrs) $ loadedNodes sgmModel
+
+prepareSceneGraph :: forall m. MonadCube m => SceneGraph -> m PreparedNodes
+prepareSceneGraph sg = flip execStateT IM.empty $ mapSceneWithTRSM_ prepareSceneGraphModel sg
 
 drawPreparedNodesGeneric :: MonadCube m => Bool -> ScreenF -> CameraF -> PreparedNodes -> DrawT m ()
 drawPreparedNodesGeneric setFirstPipeline (Screen {..}) camera = foldM_ drawPipeline setFirstPipeline

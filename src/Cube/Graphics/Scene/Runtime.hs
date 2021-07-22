@@ -3,15 +3,20 @@
 module Cube.Graphics.Scene.Runtime
   ( ModelId
   , SceneGraphModel(..)
+  , ModelInstance(..)
   , SceneGraphNode(..)
   , SceneGraph
   , sgGraph
   , SceneOptions(..)
   , newSceneGraph
   , addScene
+  , mapSceneM_
+  , mapSceneWithTRSM_
+  , advanceAnimations
   ) where
 
 import Data.Maybe
+import Data.IORef
 import Data.Vector (Vector)
 import qualified Data.Vector as V
 import Data.HashMap.Strict (HashMap)
@@ -23,12 +28,14 @@ import Linear
 import qualified Data.GlTF.Resources as TF
 import Data.GLSL.Preprocessor (ShaderWithIncludes)
 import Cube.Types
+import Cube.Time
 import Cube.Graphics.Types
 import Cube.Graphics.TRS
+import Cube.Graphics.Animation
 import Cube.Graphics.ShadersCache
 import Cube.Graphics.Scene.Types
 import Cube.Graphics.Scene.Resources
-import Cube.Graphics.Model (loadModel, LoadedModel, CubePipelineCache)
+import Cube.Graphics.Model
 import Data.WeakCache (WeakCache)
 import qualified Data.WeakCache as WeakCache
 
@@ -39,8 +46,12 @@ data SceneGraphModel = SceneGraphModel { sgmModel :: LoadedModel
                                        , sgmId :: ModelId
                                        }
 
+data ModelInstance = ModelInstance { instanceModel :: SceneGraphModel
+                                   , instanceAnimationRef :: Maybe (IORef AnimationState)
+                                   }
+
 data SceneGraphNode = SceneGraphNode { sgnTrs :: TRSF
-                                     , sgnModel :: Maybe SceneGraphModel
+                                     , sgnModel :: Maybe ModelInstance
                                      , sgnChildren :: Vector SceneGraphNode
                                      }
 
@@ -84,7 +95,7 @@ nodeTransform (SceneNode { sceneNodeMatrix = Nothing, .. }) =
                }
 nodeTransform _ = Left "Both transformation matrix and TRS values are specified"
 
-loadSceneModel :: MonadCube m => ModelName -> SceneT m SceneGraphModel
+loadSceneModel :: MonadCube m => ModelName -> SceneT m ModelInstance
 loadSceneModel name = do
   SceneInfo {..} <- ask
   let create = do
@@ -96,7 +107,12 @@ loadSceneModel name = do
                                  , sgmName = name
                                  , sgmId = myId
                                  }
-  WeakCache.getOrCreate name create (sgModelCache infoGraph)
+  instanceModel <- WeakCache.getOrCreate name create (sgModelCache infoGraph)
+  instanceAnimationRef <-
+    case HM.lookup "idle" $ loadedAnimations $ sgmModel instanceModel of
+      Nothing -> return Nothing
+      Just anim -> fmap Just $ liftIO $ newIORef $ startAnimation (defaultAnimationOptions { aoptsLoop = True }) Nothing anim
+  return $ ModelInstance {..}
 
 loadSceneNode :: MonadCube m => SceneNode -> SceneT m SceneGraphNode
 loadSceneNode node@(SceneNode {..}) = do
@@ -122,3 +138,22 @@ addScene sg (BoundScene {..}) = do
   return $ sg' { sgGraph = sgGraph sg' <> graph
                , sgLastModelId = stateLastModelId state'
                }
+
+mapSceneM_ :: Monad m => (ModelInstance -> m ()) -> SceneGraph -> m ()
+mapSceneM_ f graph = mapM_ go $ V.toList $ sgGraph graph
+  where go (SceneGraphNode {..}) = do
+          mapM_ f sgnModel
+          mapM_ go $ V.toList sgnChildren
+
+mapSceneWithTRSM_ :: Monad m => (TRSF -> ModelInstance -> m ()) -> SceneGraph -> m ()
+mapSceneWithTRSM_ f graph = mapM_ (go mempty) $ V.toList $ sgGraph graph
+  where go parentTrs (SceneGraphNode {..}) = do
+          let trs = parentTrs <> sgnTrs
+          mapM_ (f trs) sgnModel
+          mapM_ (go trs) $ V.toList sgnChildren
+
+-- Animation should be advanced before each render.
+advanceAnimations :: MonadCube m => Timestamp -> SceneGraph -> m ()
+advanceAnimations currentTime = mapSceneM_ advance
+  where advance (ModelInstance { instanceAnimationRef = Nothing }) = return ()
+        advance (ModelInstance { instanceAnimationRef = Just ref }) = liftIO $ modifyIORef' ref (advanceAnimation currentTime)

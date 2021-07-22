@@ -3,7 +3,7 @@
 {-# LANGUAGE StrictData #-}
 
 module Cube.Graphics.Model
-  ( NodeName
+  ( AnimationName
   , LoadedModel(..)
   , LoadedNodeTree(..)
   , LoadedSampler(..)
@@ -65,7 +65,7 @@ import Cube.Graphics.Types
 import Cube.Graphics.TRS
 import Cube.Graphics.ShadersCache
 
-type NodeName = Text
+type AnimationName = Text
 type MaterialId = Int
 
 data LoadedNodeTree = LoadedNodeTree { lnodeTrs :: TRSF
@@ -133,7 +133,7 @@ unionLoadedSamplerGroup a b = LoadedSamplerGroup { samplerTranslation = liftU2 f
                                                  }
   where failUnion _ _ = error "Can't have same animation target specified for the same node"
 
-data LoadedAnimation meta = LoadedAnimation { lanimNodes :: HashMap TF.NodeIndex (LoadedSamplerGroup meta)
+data LoadedAnimation meta = LoadedAnimation { lanimNodes :: IntMap (LoadedSamplerGroup meta)
                                             , lanimBeginning :: Float
                                             , lanimEnd :: Float
                                             }
@@ -321,13 +321,14 @@ getPreparedAccessor idx = do
       modify $ \x -> x { currentPreparedAccessors = IM.insert idx prepared accessors }
       return prepared
 
-loadAnimation :: forall m. MonadCube m => TF.Animation -> ModelT m (LoadedAnimation EmptySamplerState)
-loadAnimation (TF.Animation {..}) = do
-  nodes <- fmap (HM.fromListWith unionLoadedSamplerGroup . catMaybes) $ mapM loadTarget $ V.toList animationChannels
-  return $ LoadedAnimation { lanimNodes = nodes
-                           , lanimBeginning = fromMaybe 0 $ fmap getMin $ foldMap (foldMapLoadedSamplerGroup (\sampler -> Just $ Min $ lsampBeginning sampler)) nodes
-                           , lanimEnd = fromMaybe 0 $ fmap getMax $ foldMap (foldMapLoadedSamplerGroup (\sampler -> Just $ Max $ lsampEnd sampler)) nodes
-                           }
+loadAnimation :: forall m. MonadCube m => TF.Animation -> ModelT m (Maybe (AnimationName, LoadedAnimation EmptySamplerState))
+loadAnimation (TF.Animation { animationName = Just name, .. }) = do
+  nodes <- fmap (IM.fromListWith unionLoadedSamplerGroup . catMaybes) $ mapM loadTarget $ V.toList animationChannels
+  let anim = LoadedAnimation { lanimNodes = nodes
+                             , lanimBeginning = fromMaybe 0 $ fmap getMin $ foldMap (foldMapLoadedSamplerGroup (\sampler -> Just $ Min $ lsampBeginning sampler)) nodes
+                             , lanimEnd = fromMaybe 0 $ fmap getMax $ foldMap (foldMapLoadedSamplerGroup (\sampler -> Just $ Max $ lsampEnd sampler)) nodes
+                             }
+  return $ Just (name, anim)
 
   where loadTarget :: TF.Channel -> ModelT m (Maybe (TF.NodeIndex, LoadedSamplerGroup EmptySamplerState))
         loadTarget (TF.Channel { channelTarget = TF.Target { targetNode = Just nodeIndex, .. }, .. }) = do
@@ -369,6 +370,7 @@ loadAnimation (TF.Animation {..}) = do
               TF.TPWeights -> fail "FIXME: Morph targets are not yet supported"
           return $ Just (nodeIndex, group)
         loadTarget _ = return Nothing
+loadAnimation _ = return Nothing
 
 countAttributes :: [Int] -> Either String Int
 countAttributes [] = return 0
@@ -548,7 +550,7 @@ loadMesh materials (TF.Mesh {..}) = do
     return $ Just $ LoadedMesh {..}
 
 data LoadedModel = LoadedModel { loadedNodes :: Vector LoadedNodeTree
-                               , loadedAnimations :: Vector (LoadedAnimation EmptySamplerState)
+                               , loadedAnimations :: HashMap AnimationName (LoadedAnimation EmptySamplerState)
                                }
 
 data PipelineMeta = PipelineMeta { pipelineAttributes :: HashMap TF.AttributeType AttributeLocation
@@ -628,7 +630,7 @@ getPipelineMeta (LoadedPipeline {..}) = do
         return $ foldr ($) initialMeta plUniformUpdates
   either fail return run
 
-loadModel' :: forall m. MonadCube m => TF.BoundGlTF -> ModelT m (Vector LoadedNodeTree, Vector (LoadedAnimation EmptySamplerState))
+loadModel' :: forall m. MonadCube m => TF.BoundGlTF -> ModelT m (Vector LoadedNodeTree, HashMap AnimationName (LoadedAnimation EmptySamplerState))
 loadModel' (TF.BoundGlTF {..}) = do
   imageBuffers <- mapM loadImageBuffer boundImages
   let samplers = fromMaybe V.empty $ TF.gltfSamplers boundGltf
@@ -656,7 +658,7 @@ loadModel' (TF.BoundGlTF {..}) = do
       Right r -> return r
 
   nodes <- mapM loadNode treeNodes
-  animations <- mapM loadAnimation $ fromMaybe V.empty $ TF.gltfAnimations boundGltf
+  animations <- fmap (HM.fromList . catMaybes) $ mapM loadAnimation $ V.toList $ fromMaybe V.empty $ TF.gltfAnimations boundGltf
   return (nodes, animations)
 
 loadModel :: forall m. MonadCube m => PipelineCache ShaderKey PipelineMeta -> TF.BoundGlTF -> m LoadedModel

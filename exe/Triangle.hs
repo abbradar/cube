@@ -54,10 +54,10 @@ data GameWindow = GameWindow { gameWindow :: SDL.Window
 
 data GameState = GameState { stateCamera :: CameraF
                            , stateScreen :: ScreenF
-                           , statePreparedNodes :: PreparedNodes
+                           , stateScene :: SceneGraph
                            }
 
-data GameInitialState = GameInitialState { initialGraph :: SceneGraph
+data GameInitialState = GameInitialState { initialScene :: SceneGraph
                                          }
 
 data GameExtra t = GameExtra { gameResizeHandle :: EventHandle t (V2 Int)
@@ -110,7 +110,7 @@ main = do
       initialScene <- liftIO $ wait initialScenePromise
       sceneGraph' <- addScene sceneGraph initialScene
 
-      let initialState = GameInitialState { initialGraph = sceneGraph'
+      let initialState = GameInitialState { initialScene = sceneGraph'
                                           }
           gameWindow = GameWindow { gameWindow = window
                                   , gameFovRadians = gameFov * pi / 180
@@ -143,10 +143,13 @@ interpretExtra (GameAction {..}) = do
 
 drawGameFrame :: MonadCube m => GameWindow -> GameState -> m ()
 drawGameFrame (GameWindow {..}) (GameState {..}) = do
+  ts <- SDL.ticks
+  advanceAnimations ts stateScene
+  prepared <- prepareSceneGraph stateScene
   Caramia.clear clearing { clearDepth = Just 1.0
                          , clearColor = Just $ Caramia.rgba 0.4 0.4 0.4 1.0
                          } screenFramebuffer
-  runDrawPreparedNodes defaultDrawParams stateScreen stateCamera statePreparedNodes
+  runDrawPreparedNodes defaultDrawParams stateScreen stateCamera prepared
   glSwapWindow gameWindow
   runPendingFinalizers
 
@@ -188,10 +191,9 @@ gameNetwork (GameWindow { gameSettings = GameSettings {..}, ..}) (GameInitialSta
   playerCamera <- foldDynM updateCamera mempty cameraStep
 
   let screen = fmap (\(V2 width height) -> perspectiveScreen gameFovRadians (fromIntegral width / fromIntegral height) gameNearPlane gameFarPlane) windowSize
-      scene = constant initialGraph
-      preparedNodes = fmap prepareSceneGraph scene
+      scene = constant initialScene
 
-      frameBehavior = GameState <$> current playerCamera <*> current screen <*> preparedNodes
+      frameBehavior = GameState <$> current playerCamera <*> current screen <*> scene
 
       network = EventLoopNetwork { eloopQuitEvent = quitEvent
                                  , eloopFrameBehavior = frameBehavior
