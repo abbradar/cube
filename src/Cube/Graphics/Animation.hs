@@ -17,7 +17,7 @@ import Data.Maybe
 import qualified Data.Vector.Storable as VS
 import qualified Data.Vector.Generic as VG
 import qualified Data.IntMap.Strict as IM
-import Linear
+import Linear hiding (trace)
 
 import Data.Int
 import Data.Vector.Functor
@@ -27,10 +27,12 @@ import Cube.Graphics.Types
 import Cube.Graphics.TRS
 import Cube.Time
 
-class UpdateAnimation f where
-  updateAnimation :: (forall container component. (Num (component Float), VG.Vector container (component Float), UnboxFunctor component) => LoadedSampler container component meta1 -> meta2 container component) -> f meta1 -> f meta2
+type UpdatableAnimation container component = (Num (component Float), VG.Vector container (component Float), UnboxFunctor component)
 
-instance (Num (component Float), VG.Vector container (component Float), UnboxFunctor component) => UpdateAnimation (LoadedSampler container component) where
+class UpdateAnimation f where
+  updateAnimation :: (forall container component. UpdatableAnimation container component => LoadedSampler container component meta1 -> meta2 container component) -> f meta1 -> f meta2
+
+instance UpdatableAnimation container component => UpdateAnimation (LoadedSampler container component) where
   updateAnimation f sampler = sampler { lsampMeta = f sampler }
   {-# INLINE updateAnimation #-}
 
@@ -56,19 +58,22 @@ data SamplerState container component = SamplerState { sstateNow :: component Fl
                                                      , sstateIndex :: Int
                                                      }
 
-advanceSamplerState :: (Num (component Float), VG.Vector container (component Float), UnboxFunctor component) => Float -> LoadedSampler container component SamplerState -> SamplerState container component
+deriving instance Show (component Float) => Show (SamplerState accessor component)
+
+advanceSamplerState :: UpdatableAnimation container component => Float -> LoadedSampler container component SamplerState -> SamplerState container component
 advanceSamplerState currentTime (LoadedSampler {..})
   | currentTime >= lsampEnd = finalState
   | currentTime <= lsampBeginning = initialState
-  | otherwise = SamplerState { sstateNow = nowValue
-                             , sstateIndex = newIndex
-                             }
+  | otherwise = currentState
 
   where finalState = SamplerState { sstateNow = VG.last lsampOutputs
                                   , sstateIndex = VS.length lsampInputs
                                   }
         initialState = SamplerState { sstateNow = VG.head lsampOutputs
                                     , sstateIndex = 0
+                                    }
+        currentState = SamplerState { sstateNow = nowValue
+                                    , sstateIndex = newIndex
                                     }
 
         (endTime, newIndex) = findNewIndex $ sstateIndex lsampMeta
@@ -111,7 +116,7 @@ advanceAnimation currentTime state@(AnimationState {..})
         loopedNow = newNow - lanimEnd astateAnimation * fromIntegral (floor (newNow / lanimEnd astateAnimation) :: Int32)
         loopedNewSince = currentTime - secondsInterval loopedNow
 
-        loopState :: forall component container. (Num (component Float), VG.Vector container (component Float), UnboxFunctor component) => LoadedSampler container component SamplerState -> SamplerState container component
+        loopState :: forall component container. UpdatableAnimation container component => LoadedSampler container component SamplerState -> SamplerState container component
         loopState sampler = advanceSamplerState loopedNow $ sampler { lsampMeta = (lsampMeta sampler) { sstateIndex = 0 } }
 
 data AnimationOptions = AnimationOptions { aoptsLoop :: Bool }

@@ -1,6 +1,7 @@
 -- | Load model resources into GPU memory.
 
 {-# LANGUAGE StrictData #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 module Cube.Graphics.Model
   ( AnimationName
@@ -96,6 +97,7 @@ data LoadedMaterial = LoadedMaterial { lmatTextures :: HashMap TextureType (TF.A
                                      }
 
 data EmptySamplerState container component = EmptySamplerState
+                                           deriving (Show, Eq, Ord)
 
 data LoadedSampler container component meta = LoadedSampler { lsampInputs :: VS.Vector Float
                                                             , lsampBeginning :: Float
@@ -105,11 +107,18 @@ data LoadedSampler container component meta = LoadedSampler { lsampInputs :: VS.
                                                             , lsampMeta :: meta container component
                                                             }
 
+deriving instance (Show (container (component Float)), Show (meta container component)) => Show (LoadedSampler container component meta)
+
 data LoadedSamplerGroup meta = LoadedSamplerGroup { samplerTranslation :: Maybe (LoadedSampler VS.Vector V3 meta)
                                                   , samplerRotation :: Maybe (LoadedSampler VS.Vector Quaternion meta)
                                                   , samplerScale :: Maybe (LoadedSampler VS.Vector V3 meta)
                                                   , samplerWeights :: Maybe (LoadedSampler V.Vector VD meta)
                                                   }
+
+deriving instance ( Show (meta VS.Vector V3)
+                  , Show (meta VS.Vector Quaternion)
+                  , Show (meta V.Vector VD)
+                  ) => Show (LoadedSamplerGroup meta)
 
 emptyLoadedSamplerGroup :: LoadedSamplerGroup meta
 emptyLoadedSamplerGroup = LoadedSamplerGroup { samplerTranslation = Nothing
@@ -137,6 +146,11 @@ data LoadedAnimation meta = LoadedAnimation { lanimNodes :: IntMap (LoadedSample
                                             , lanimBeginning :: Float
                                             , lanimEnd :: Float
                                             }
+
+deriving instance ( Show (meta VS.Vector V3)
+                  , Show (meta VS.Vector Quaternion)
+                  , Show (meta V.Vector VD)
+                  ) => Show (LoadedAnimation meta)
 
 nodeTransform :: TF.Node -> Either String TRSF
 nodeTransform (TF.Node { nodeMatrix = Just (WM44 mtx), nodeRotation = Nothing, nodeScale = Nothing, nodeTranslation = Nothing }) = return $ matrixToTRS $ transpose mtx

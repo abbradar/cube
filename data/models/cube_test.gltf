@@ -124,19 +124,19 @@
         {
             "bufferView" : 4,
             "componentType" : 5126,
-            "count" : 61,
+            "count" : 41,
             "max" : [
                 2.5
             ],
             "min" : [
-                0
+                0.8333333333333334
             ],
             "type" : "SCALAR"
         },
         {
             "bufferView" : 5,
             "componentType" : 5126,
-            "count" : 61,
+            "count" : 41,
             "type" : "VEC3"
         }
     ],
@@ -163,13 +163,13 @@
         },
         {
             "buffer" : 0,
-            "byteLength" : 244,
+            "byteLength" : 164,
             "byteOffset" : 840
         },
         {
             "buffer" : 0,
-            "byteLength" : 732,
-            "byteOffset" : 1084
+            "byteLength" : 492,
+            "byteOffset" : 1004
         }
     ],
     "samplers" : [
@@ -180,7 +180,7 @@
     ],
     "buffers" : [
         {
-            "byteLength" : 1816,
+            "byteLength" : 1496,
             "uri" : "cube_test.bin"
         }
     ]

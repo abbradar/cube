@@ -32,7 +32,7 @@ import qualified Data.Vector.Storable as VS
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
 import Data.Vector.Storable.ByteString
-import Linear
+import Linear hiding (trace)
 
 import Data.Vector.Functor
 import Linear.Aeson
@@ -68,24 +68,6 @@ deriving instance ( Show (f a)
                   , Show (f (M44 a))
                   ) => Show (AccessorContainer f a)
 
-deriving instance ( Eq (f a)
-                  , Eq (f (V2 a))
-                  , Eq (f (V3 a))
-                  , Eq (f (V4 a))
-                  , Eq (f (M22 a))
-                  , Eq (f (M33 a))
-                  , Eq (f (M44 a))
-                  ) => Eq (AccessorContainer f a)
-
-deriving instance ( Ord (f a)
-                  , Ord (f (V2 a))
-                  , Ord (f (V3 a))
-                  , Ord (f (V4 a))
-                  , Ord (f (M22 a))
-                  , Ord (f (M33 a))
-                  , Ord (f (M44 a))
-                  ) => Ord (AccessorContainer f a)
-
 data AccessorComponent f = ARByte (f Int8)
                          | ARUByte (f Word8)
                          | ARShort (f Int16)
@@ -100,22 +82,6 @@ deriving instance ( Show (f Int8)
                   , Show (f Word32)
                   , Show (f Float)
                   ) => Show (AccessorComponent f)
-
-deriving instance ( Eq (f Int8)
-                  , Eq (f Word8)
-                  , Eq (f Int16)
-                  , Eq (f Word16)
-                  , Eq (f Word32)
-                  , Eq (f Float)
-                  ) => Eq (AccessorComponent f)
-
-deriving instance ( Ord (f Int8)
-                  , Ord (f Word8)
-                  , Ord (f Int16)
-                  , Ord (f Word16)
-                  , Ord (f Word32)
-                  , Ord (f Float)
-                  ) => Ord (AccessorComponent f)
 
 type AccessorContainerVector = AccessorContainer VS.Vector
 type AccessorContainerValue = AccessorContainer Identity

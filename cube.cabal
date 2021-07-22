@@ -46,6 +46,7 @@ library
       Data.GlTF.URI
       Data.Vector.Functor
       Data.Vector.Hashable
+      Data.Vector.Storable.ByteString
       Data.WeakCache
       Foreign.Storable.Generic
       Linear.Aeson
@@ -104,7 +105,6 @@ library
     , base64-bytestring
     , bytestring
     , bytestring-mmap
-    , bytestring-to-vector
     , caramia
     , containers
     , dependent-map
@@ -190,7 +190,6 @@ executable triangle
     , base64-bytestring
     , bytestring
     , bytestring-mmap
-    , bytestring-to-vector
     , caramia
     , containers
     , cube
