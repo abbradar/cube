@@ -10,6 +10,8 @@ module Cube.Time
   , isLater
   , earlier
   , later
+  , intervalSeconds
+  , secondsInterval
   , TimeStep(..)
   ) where
 
@@ -35,6 +37,12 @@ earlier a b = if a `isEarlier` b then a else b
 
 later :: Timestamp -> Timestamp -> Timestamp
 later a b = if a `isLater` b then a else b
+
+intervalSeconds :: Fractional a => TimeInterval -> a
+intervalSeconds = (/ 1000) . fromIntegral
+
+secondsInterval :: RealFrac a => a -> TimeInterval
+secondsInterval = floor . (* 1000)
 
 data TimeStep = TimeStep { ticksElapsed :: TicksElapsed
                          , currentTime :: Timestamp

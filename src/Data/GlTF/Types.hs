@@ -70,6 +70,7 @@ import Data.Maybe
 import Control.Applicative
 import Data.Char
 import GHC.Generics (Generic)
+import Data.Scientific (Scientific)
 import qualified Data.Scientific as Scientific
 import Data.Vector (Vector)
 import Data.Set (Set)
@@ -84,6 +85,7 @@ import Linear
 import qualified Data.Attoparsec.Text as Atto
 
 import Data.Aeson.Utils
+import Linear.Matrix.Wrapper
 import Linear.Aeson ()
 
 {- These are hand-written, instead of generating from JSON Schema. Reason being
@@ -270,40 +272,14 @@ data Node = Node { nodeName :: Maybe Text
                  , nodeRotation :: Maybe (Quaternion Float)
                  , nodeScale :: Maybe (V3 Float)
                  , nodeTranslation :: Maybe (V3 Float)
-                 , nodeMatrix :: Maybe (M44 Float)
+                 , nodeMatrix :: Maybe (WM44 Float)
                  , nodeChildren :: Maybe (Vector NodeIndex)
                  , nodeExtras :: Maybe ExtrasMap
                  }
           deriving (Show, Generic)
 
 instance FromJSON Node where
-  parseJSON = withObject "Node" $ \v -> do
-    nodeName <- v .:! "name"
-    nodeMesh <- v .:! "mesh"
-
-    let parseRotation [x, y, z, w] = return $ Quaternion w (V3 x y z)
-        parseRotation _ = fail "Invalid quaternion size"
-    nodeRotation <- v .:! "rotation" >>= mapM parseRotation
-
-    nodeScale <- v .:! "scale"
-    nodeTranslation <- v .:! "translation"
-
-    let parseMatrix [ m00, m10, m20, m30
-                    , m01, m11, m21, m31
-                    , m02, m12, m22, m32
-                    , m03, m13, m23, m33
-                    ] =
-          return $ V4 (V4 m00 m01 m02 m03)
-                      (V4 m10 m11 m12 m13)
-                      (V4 m20 m21 m22 m23)
-                      (V4 m30 m31 m32 m33)
-        parseMatrix _ = fail "Invalid size matrix"
-    nodeMatrix <- v .:! "matrix" >>= mapM parseMatrix
-
-    nodeChildren <- v .:! "children"
-    nodeExtras <- v .:! "extras"
-
-    return Node {..}
+  parseJSON = genericParseJSON $ gltfOptions "node"
 
 data Scene = Scene { sceneName :: Maybe Text
                    , sceneNodes :: Set NodeIndex
@@ -409,8 +385,8 @@ data Accessor = Accessor { accessorName :: Maybe Text
                          , accessorNormalized :: Maybe Bool
                          , accessorCount :: Int
                          , accessorType :: AccessorType
-                         , accessorMax :: Maybe (Vector Float)
-                         , accessorMin :: Maybe (Vector Float)
+                         , accessorMax :: Maybe (Vector Scientific)
+                         , accessorMin :: Maybe (Vector Scientific)
                          , accessorSparse :: Maybe () -- So that we can detect and fail on sparse accessors.
                          , accessorExtras :: Maybe ExtrasMap
                          }

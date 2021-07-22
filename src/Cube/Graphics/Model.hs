@@ -8,7 +8,9 @@ module Cube.Graphics.Model
   , LoadedNodeTree(..)
   , LoadedSampler(..)
   , LoadedSamplerGroup(..)
+  , foldMapLoadedSamplerGroup
   , LoadedAnimation(..)
+  , EmptySamplerState(..)
   , LoadedMesh(..)
   , TextureType(..)
   , LoadedPrimitive(..)
@@ -20,6 +22,7 @@ module Cube.Graphics.Model
   , loadModel
   ) where
 
+import Data.Semigroup
 import Data.Typeable
 import Data.Functor
 import Data.Maybe
@@ -33,6 +36,7 @@ import Data.Text (Text)
 import Data.Vector (Vector)
 import qualified Data.Vector as V
 import qualified Data.Vector.Storable as VS
+import qualified Data.Vector.Generic as VG
 import qualified Data.Attoparsec.ByteString.Char8 as Atto
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as B
@@ -48,6 +52,9 @@ import Graphics.Caramia
 import Codec.Picture
 import Graphics.Caramia.OpenGLResource
 
+import Linear.Matrix.Wrapper
+import Linear.VD (VD)
+import Data.Vector.Functor
 import Data.Vector.Hashable ()
 import qualified Data.GlTF.Types as TF
 import qualified Data.GlTF.Resources as TF
@@ -67,8 +74,8 @@ data LoadedNodeTree = LoadedNodeTree { lnodeTrs :: TRSF
                                      , lnodeChildren :: Vector LoadedNodeTree
                                      }
 
-data LoadedMesh = LoadedMesh { lmeshPrimitives :: Vector LoadedPrimitive
-                             }
+newtype LoadedMesh = LoadedMesh { lmeshPrimitives :: Vector LoadedPrimitive
+                                }
 
 data TextureType = BaseColorTexture
                  deriving (Show, Eq, Ord, Bounded, Enum, Generic, Typeable, Hashable)
@@ -88,26 +95,37 @@ data LoadedMaterial = LoadedMaterial { lmatTextures :: HashMap TextureType (TF.A
                                      , lmatId :: MaterialId
                                      }
 
-data LoadedSampler a = LoadedSampler { lsampInputs :: VS.Vector Float
-                                     , lsampOutputs :: a
-                                     }
-                     deriving (Show, Eq)
+data EmptySamplerState container component = EmptySamplerState
 
-data LoadedSamplerGroup = LoadedSamplerGroup { samplerTranslation :: Maybe (LoadedSampler (VS.Vector V3F))
-                                             , samplerRotation :: Maybe (LoadedSampler (VS.Vector QF))
-                                             , samplerScale :: Maybe (LoadedSampler (VS.Vector V3F))
-                                             , samplerWeights :: Maybe (LoadedSampler (V.Vector (VS.Vector V3F)))
-                                             }
-                        deriving (Show, Eq)
+data LoadedSampler container component meta = LoadedSampler { lsampInputs :: VS.Vector Float
+                                                            , lsampBeginning :: Float
+                                                            , lsampEnd :: Float
+                                                            , lsampInterpolation :: TF.AnimationSamplerInterpolation
+                                                            , lsampOutputs :: container (component Float)
+                                                            , lsampMeta :: meta container component
+                                                            }
 
-emptyLoadedSamplerGroup :: LoadedSamplerGroup
+data LoadedSamplerGroup meta = LoadedSamplerGroup { samplerTranslation :: Maybe (LoadedSampler VS.Vector V3 meta)
+                                                  , samplerRotation :: Maybe (LoadedSampler VS.Vector Quaternion meta)
+                                                  , samplerScale :: Maybe (LoadedSampler VS.Vector V3 meta)
+                                                  , samplerWeights :: Maybe (LoadedSampler V.Vector VD meta)
+                                                  }
+
+emptyLoadedSamplerGroup :: LoadedSamplerGroup meta
 emptyLoadedSamplerGroup = LoadedSamplerGroup { samplerTranslation = Nothing
                                              , samplerRotation = Nothing
                                              , samplerScale = Nothing
                                              , samplerWeights = Nothing
                                              }
 
-unionLoadedSamplerGroup :: LoadedSamplerGroup -> LoadedSamplerGroup -> LoadedSamplerGroup
+foldMapLoadedSamplerGroup :: Monoid m => (forall container component. (VG.Vector container (component Float), UnboxFunctor component) => LoadedSampler container component meta -> m) -> LoadedSamplerGroup meta -> m
+foldMapLoadedSamplerGroup f (LoadedSamplerGroup {..}) =
+  foldMap f samplerTranslation
+  <> foldMap f samplerRotation
+  <> foldMap f samplerScale
+  <> foldMap f samplerWeights
+
+unionLoadedSamplerGroup :: LoadedSamplerGroup meta -> LoadedSamplerGroup meta -> LoadedSamplerGroup meta
 unionLoadedSamplerGroup a b = LoadedSamplerGroup { samplerTranslation = liftU2 failUnion (samplerTranslation a) (samplerTranslation b)
                                                  , samplerRotation = liftU2 failUnion (samplerRotation a) (samplerRotation b)
                                                  , samplerScale = liftU2 failUnion (samplerScale a) (samplerScale b)
@@ -115,12 +133,13 @@ unionLoadedSamplerGroup a b = LoadedSamplerGroup { samplerTranslation = liftU2 f
                                                  }
   where failUnion _ _ = error "Can't have same animation target specified for the same node"
 
-newtype LoadedAnimation = LoadedAnimation { lanimNodes :: HashMap TF.NodeIndex LoadedSamplerGroup
-                                          }
-                        deriving (Show, Eq)
+data LoadedAnimation meta = LoadedAnimation { lanimNodes :: HashMap TF.NodeIndex (LoadedSamplerGroup meta)
+                                            , lanimBeginning :: Float
+                                            , lanimEnd :: Float
+                                            }
 
 nodeTransform :: TF.Node -> Either String TRSF
-nodeTransform (TF.Node { nodeMatrix = Just mtx, nodeRotation = Nothing, nodeScale = Nothing, nodeTranslation = Nothing }) = return $ matrixToTRS mtx
+nodeTransform (TF.Node { nodeMatrix = Just (WM44 mtx), nodeRotation = Nothing, nodeScale = Nothing, nodeTranslation = Nothing }) = return $ matrixToTRS $ transpose mtx
 nodeTransform (TF.Node { nodeMatrix = Nothing, .. }) =
   return $ TRS { trsTranslation = fromMaybe (V3 0 0 0) nodeTranslation
                , trsRotation = fromMaybe (Quaternion 1 (V3 0 0 0)) nodeRotation
@@ -231,7 +250,7 @@ data PreparedAccessor = PreparedAccessor { preparedAccessor :: TF.Accessor
 type CubePipelineCache = PipelineCache ShaderKey PipelineMeta
 
 data LoadState = LoadState { currentBuffers :: IntMap Buffer
-                           , currentAccessorsData :: IntMap TF.AccessorRawData
+                           , currentAccessorsData :: IntMap TF.ConvertedAccessorComponent
                            , currentPreparedAccessors :: IntMap PreparedAccessor
                            }
 
@@ -256,7 +275,7 @@ getBuffer idx = do
       modify $ \x -> x { currentBuffers = IM.insert idx buffer buffers }
       return buffer
 
-getAccessorData :: MonadCube m => TF.AccessorIndex -> ModelT m TF.AccessorRawData
+getAccessorData :: MonadCube m => TF.AccessorIndex -> ModelT m TF.ConvertedAccessorComponent
 getAccessorData idx = do
   accessors <- gets currentAccessorsData
   case IM.lookup idx accessors of
@@ -269,7 +288,7 @@ getAccessorData idx = do
           Nothing -> fail "Sparse data in accessors is not supported"
           Just bidx -> return bidx
       let bufferView = infoBufferViews V.! bufferIndex
-      accessorData <- either fail return $ TF.readRawAccessorWithBuffer infoSourceBuffers bufferView accessor
+      accessorData <- either fail return $ TF.convertAccessor infoSourceBuffers bufferView accessor
       modify $ \x -> x { currentAccessorsData = IM.insert idx accessorData accessors }
       return accessorData
 
@@ -302,40 +321,48 @@ getPreparedAccessor idx = do
       modify $ \x -> x { currentPreparedAccessors = IM.insert idx prepared accessors }
       return prepared
 
-loadAnimation :: forall m. MonadCube m => TF.Animation -> ModelT m LoadedAnimation
+loadAnimation :: forall m. MonadCube m => TF.Animation -> ModelT m (LoadedAnimation EmptySamplerState)
 loadAnimation (TF.Animation {..}) = do
   nodes <- fmap (HM.fromListWith unionLoadedSamplerGroup . catMaybes) $ mapM loadTarget $ V.toList animationChannels
-  return $ LoadedAnimation { lanimNodes = nodes }
+  return $ LoadedAnimation { lanimNodes = nodes
+                           , lanimBeginning = fromMaybe 0 $ fmap getMin $ foldMap (foldMapLoadedSamplerGroup (\sampler -> Just $ Min $ lsampBeginning sampler)) nodes
+                           , lanimEnd = fromMaybe 0 $ fmap getMax $ foldMap (foldMapLoadedSamplerGroup (\sampler -> Just $ Max $ lsampEnd sampler)) nodes
+                           }
 
-  where loadTarget :: TF.Channel -> ModelT m (Maybe (TF.NodeIndex, LoadedSamplerGroup))
+  where loadTarget :: TF.Channel -> ModelT m (Maybe (TF.NodeIndex, LoadedSamplerGroup EmptySamplerState))
         loadTarget (TF.Channel { channelTarget = TF.Target { targetNode = Just nodeIndex, .. }, .. }) = do
           let TF.AnimationSampler {..} = animationSamplers V.! channelSampler
+              lsampInterpolation = fromMaybe TF.ASILinear animationSamplerInterpolation
+              lsampMeta = EmptySamplerState
           rawInputData <- getAccessorData animationSamplerInput
-          lsampInputs <-
+          inputData <-
             case rawInputData of
-              TF.ARFloat (TF.ARScalar vec) -> return vec
+              TF.ARFloat (TF.ARScalar x) -> return x
               _ -> fail "Invalid data type for animation sampler input"
+          let lsampInputs = TF.convertedVector inputData
+          lsampBeginning <- maybe (fail "Min value for input accessor not set") return $ TF.convertedMin $ TF.convertedMinMax inputData
+          lsampEnd <- maybe (fail "Max value for input accessor not set") return $ TF.convertedMax $ TF.convertedMinMax inputData
           rawOutputData <- getAccessorData animationSamplerOutput
           group <-
             case targetPath of
               TF.TPTranslation -> do
                 lsampOutputs <-
                   case rawOutputData of
-                    TF.ARFloat (TF.ARVec3 vec) -> return vec
+                    TF.ARFloat (TF.ARVec3 x) -> return $ TF.convertedVector x
                     _ -> fail "Invalid data type for translation animation sampler output"
                 let sampler = LoadedSampler {..}
                 return $ emptyLoadedSamplerGroup { samplerTranslation = Just sampler }
               TF.TPRotation -> do
                 lsampOutputs <-
-                  case TF.normalizeAccessorData rawOutputData of
-                    TF.ARVec4 vec -> return $ VS.map (\(V4 a x y z) -> Quaternion a (V3 x y z)) vec
+                  case rawOutputData of
+                    TF.ARFloat (TF.ARVec4 x) -> return $ VS.map (\(V4 w a b c) -> Quaternion w (V3 a b c)) $ TF.convertedVector x
                     _ -> fail "Invalid data type for rotation animation sampler output"
                 let sampler = LoadedSampler {..}
                 return $ emptyLoadedSamplerGroup { samplerRotation = Just sampler }
               TF.TPScale -> do
                 lsampOutputs <-
-                  case TF.normalizeAccessorData rawOutputData of
-                    TF.ARVec3 vec -> return vec
+                  case rawOutputData of
+                    TF.ARFloat (TF.ARVec3 x) -> return $ TF.convertedVector x
                     _ -> fail "Invalid data type for scale animation sampler output"
                 let sampler = LoadedSampler {..}
                 return $ emptyLoadedSamplerGroup { samplerScale = Just sampler }
@@ -521,7 +548,7 @@ loadMesh materials (TF.Mesh {..}) = do
     return $ Just $ LoadedMesh {..}
 
 data LoadedModel = LoadedModel { loadedNodes :: Vector LoadedNodeTree
-                               , loadedAnimations :: Vector LoadedAnimation
+                               , loadedAnimations :: Vector (LoadedAnimation EmptySamplerState)
                                }
 
 data PipelineMeta = PipelineMeta { pipelineAttributes :: HashMap TF.AttributeType AttributeLocation
@@ -601,7 +628,7 @@ getPipelineMeta (LoadedPipeline {..}) = do
         return $ foldr ($) initialMeta plUniformUpdates
   either fail return run
 
-loadModel' :: forall m. MonadCube m => TF.BoundGlTF -> ModelT m (Vector LoadedNodeTree, Vector LoadedAnimation)
+loadModel' :: forall m. MonadCube m => TF.BoundGlTF -> ModelT m (Vector LoadedNodeTree, Vector (LoadedAnimation EmptySamplerState))
 loadModel' (TF.BoundGlTF {..}) = do
   imageBuffers <- mapM loadImageBuffer boundImages
   let samplers = fromMaybe V.empty $ TF.gltfSamplers boundGltf

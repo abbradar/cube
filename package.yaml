@@ -15,6 +15,7 @@ dependencies:
   - JuicyPixels
   - hsnoise >= 0.0.2
   - linear >= 1.20.0
+  - distributive
   - lens
   - text
   - vector
@@ -47,7 +48,12 @@ default-extensions:
   - OverloadedStrings
   - TupleSections
   - DeriveFunctor
+  - DeriveFoldable
+  - DeriveDataTypeable
+  - DeriveTraversable
+  - DerivingStrategies
   - ScopedTypeVariables
+  - LiberalTypeSynonyms
   - TemplateHaskell
   - QuasiQuotes
   - NamedFieldPuns
@@ -73,8 +79,9 @@ default-extensions:
   - DerivingStrategies
   - MultiParamTypeClasses
   - RecursiveDo
+  - PolyKinds
 
-ghc-options: -Wall -O2 -fprof-auto
+ghc-options: -Wall -O2
 
 library:
   source-dirs: src

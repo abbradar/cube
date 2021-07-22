@@ -1,17 +1,30 @@
 -- | Read accessors data into Haskell.
 
 {-# LANGUAGE StrictData #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 module Data.GlTF.Accessors
-  ( AccessorRawVector(..)
-  , AccessorRawData(..)
-  , mapAccessorRawVector
-  , normalizeAccessorData
-  , readRawAccessorWithBuffer
+  ( AccessorContainer(..)
+  , AccessorComponent(..)
+  , StorableFunctor(..)
+  , ConvertedAccessor(..)
+  , AccessorMinMax(..)
+  , AccessorContainerVector
+  , AccessorContainerValue
+  , ConvertedAccessorContainer
+  , AccessorMinMaxContainer
+  , AccessorVectorComponent
+  , AccessorValueComponent
+  , ConvertedAccessorComponent
+  , AccessorMinMaxComponent
+  , convertAccessor
+  , convertAccessorMinMax
   ) where
 
 import Control.Monad
+import Data.Coerce
 import Data.Maybe
+import Data.Functor.Identity
 import Data.Word
 import Data.Int
 import qualified Data.Vector as V
@@ -21,34 +34,119 @@ import qualified Data.ByteString as B
 import Data.Vector.Storable.ByteString
 import Linear
 
+import Data.Vector.Functor
+import Linear.Aeson
+import Linear.Matrix.Wrapper
 import Data.GlTF.Types
 import Data.GlTF.Resources
 
-data AccessorRawVector a = ARScalar (VS.Vector a)
-                         | ARVec2 (VS.Vector (V2 a))
-                         | ARVec3 (VS.Vector (V3 a))
-                         | ARVec4 (VS.Vector (V4 a))
-                         | ARMat2 (VS.Vector (M22 a))
-                         | ARMat3 (VS.Vector (M33 a))
-                         | ARMat4 (VS.Vector (M44 a))
+data AccessorContainer f a = ARScalar (f a)
+                           | ARVec2 (f (V2 a))
+                           | ARVec3 (f (V3 a))
+                           | ARVec4 (f (V4 a))
+                           | ARMat2 (f (M22 a))
+                           | ARMat3 (f (M33 a))
+                           | ARMat4 (f (M44 a))
+                           deriving (Functor)
+
+instance StorableFunctor f => StorableFunctor (AccessorContainer f) where
+  fmapStorable f (ARScalar x) = ARScalar $ fmapStorable f x
+  fmapStorable f (ARVec2 x) = ARVec2 $ fmapStorable (fmap f) x
+  fmapStorable f (ARVec3 x) = ARVec3 $ fmapStorable (fmap f) x
+  fmapStorable f (ARVec4 x) = ARVec4 $ fmapStorable (fmap f) x
+  fmapStorable f (ARMat2 x) = ARMat2 $ fmapStorable (fmap $ fmap f) x
+  fmapStorable f (ARMat3 x) = ARMat3 $ fmapStorable (fmap $ fmap f) x
+  fmapStorable f (ARMat4 x) = ARMat4 $ fmapStorable (fmap $ fmap f) x
+  {-# INLINE fmapStorable #-}
+
+deriving instance ( Show (f a)
+                  , Show (f (V2 a))
+                  , Show (f (V3 a))
+                  , Show (f (V4 a))
+                  , Show (f (M22 a))
+                  , Show (f (M33 a))
+                  , Show (f (M44 a))
+                  ) => Show (AccessorContainer f a)
+
+deriving instance ( Eq (f a)
+                  , Eq (f (V2 a))
+                  , Eq (f (V3 a))
+                  , Eq (f (V4 a))
+                  , Eq (f (M22 a))
+                  , Eq (f (M33 a))
+                  , Eq (f (M44 a))
+                  ) => Eq (AccessorContainer f a)
+
+deriving instance ( Ord (f a)
+                  , Ord (f (V2 a))
+                  , Ord (f (V3 a))
+                  , Ord (f (V4 a))
+                  , Ord (f (M22 a))
+                  , Ord (f (M33 a))
+                  , Ord (f (M44 a))
+                  ) => Ord (AccessorContainer f a)
+
+data AccessorComponent f = ARByte (f Int8)
+                         | ARUByte (f Word8)
+                         | ARShort (f Int16)
+                         | ARUShort (f Word16)
+                         | ARUInt (f Word32)
+                         | ARFloat (f Float)
+
+deriving instance ( Show (f Int8)
+                  , Show (f Word8)
+                  , Show (f Int16)
+                  , Show (f Word16)
+                  , Show (f Word32)
+                  , Show (f Float)
+                  ) => Show (AccessorComponent f)
+
+deriving instance ( Eq (f Int8)
+                  , Eq (f Word8)
+                  , Eq (f Int16)
+                  , Eq (f Word16)
+                  , Eq (f Word32)
+                  , Eq (f Float)
+                  ) => Eq (AccessorComponent f)
+
+deriving instance ( Ord (f Int8)
+                  , Ord (f Word8)
+                  , Ord (f Int16)
+                  , Ord (f Word16)
+                  , Ord (f Word32)
+                  , Ord (f Float)
+                  ) => Ord (AccessorComponent f)
+
+type AccessorContainerVector = AccessorContainer VS.Vector
+type AccessorContainerValue = AccessorContainer Identity
+
+type AccessorVectorComponent = AccessorComponent (AccessorContainer VS.Vector)
+type AccessorValueComponent = AccessorComponent (AccessorContainer Identity)
+
+data ConvertedAccessor a = ConvertedAccessor { convertedVector :: VS.Vector a
+                                             , convertedMinMax :: AccessorMinMax a
+                                             }
                          deriving (Show, Eq, Ord)
 
-data AccessorRawData = ARByte (AccessorRawVector Int8)
-                     | ARUByte (AccessorRawVector Word8)
-                     | ARShort (AccessorRawVector Int16)
-                     | ARUShort (AccessorRawVector Word16)
-                     | ARUInt (AccessorRawVector Word32)
-                     | ARFloat (AccessorRawVector Float)
-                     deriving (Show, Eq, Ord)
+instance StorableFunctor ConvertedAccessor where
+  fmapStorable f (ConvertedAccessor {..}) = ConvertedAccessor { convertedVector = fmapStorable f convertedVector
+                                                              , convertedMinMax = fmap f convertedMinMax
+                                                              }
+  {-# INLINE fmapStorable #-}
 
-mapAccessorRawVector :: (VS.Storable a, VS.Storable b) => (a -> b) -> AccessorRawVector a -> AccessorRawVector b
-mapAccessorRawVector f (ARScalar vec) = ARScalar $ VS.map f vec
-mapAccessorRawVector f (ARVec2 vec) = ARVec2 $ VS.map (fmap f) vec
-mapAccessorRawVector f (ARVec3 vec) = ARVec3 $ VS.map (fmap f) vec
-mapAccessorRawVector f (ARVec4 vec) = ARVec4 $ VS.map (fmap f) vec
-mapAccessorRawVector f (ARMat2 vec) = ARMat2 $ VS.map (fmap $ fmap f) vec
-mapAccessorRawVector f (ARMat3 vec) = ARMat3 $ VS.map (fmap $ fmap f) vec
-mapAccessorRawVector f (ARMat4 vec) = ARMat4 $ VS.map (fmap $ fmap f) vec
+type ConvertedAccessorContainer = AccessorContainer ConvertedAccessor
+type ConvertedAccessorComponent = AccessorComponent (AccessorContainer ConvertedAccessor)
+
+data AccessorMinMax a = AccessorMinMax { convertedMin :: Maybe a
+                                       , convertedMax :: Maybe a
+                                       }
+                      deriving (Show, Eq, Ord, Functor)
+
+instance StorableFunctor AccessorMinMax where
+  fmapStorable = fmap
+
+type AccessorMinMaxContainer = AccessorContainer AccessorMinMax
+type AccessorMinMaxComponent = AccessorComponent (AccessorContainer AccessorMinMax)
 
 normalizeSigned :: forall a. (Integral a, Bounded a) => a -> Float
 normalizeSigned x = max (fromIntegral x / fromIntegral (maxBound :: a)) (-1)
@@ -56,13 +154,13 @@ normalizeSigned x = max (fromIntegral x / fromIntegral (maxBound :: a)) (-1)
 normalizeUnsigned :: forall a. (Integral a, Bounded a) => a -> Float
 normalizeUnsigned x = fromIntegral x / fromIntegral (maxBound :: a)
 
-normalizeAccessorData :: AccessorRawData -> AccessorRawVector Float
-normalizeAccessorData (ARByte vec) = mapAccessorRawVector normalizeSigned vec
-normalizeAccessorData (ARUByte vec) = mapAccessorRawVector normalizeUnsigned vec
-normalizeAccessorData (ARShort vec) = mapAccessorRawVector normalizeSigned vec
-normalizeAccessorData (ARUShort vec) = mapAccessorRawVector normalizeUnsigned vec
-normalizeAccessorData (ARUInt vec) = mapAccessorRawVector normalizeUnsigned vec
-normalizeAccessorData (ARFloat vec) = vec
+normalizeAccessorComponent :: StorableFunctor f => AccessorComponent (AccessorContainer f) -> AccessorContainer f Float
+normalizeAccessorComponent (ARByte vec) = fmapStorable normalizeSigned vec
+normalizeAccessorComponent (ARUByte vec) = fmapStorable normalizeUnsigned vec
+normalizeAccessorComponent (ARShort vec) = fmapStorable normalizeSigned vec
+normalizeAccessorComponent (ARUShort vec) = fmapStorable normalizeUnsigned vec
+normalizeAccessorComponent (ARUInt vec) = fmapStorable normalizeUnsigned vec
+normalizeAccessorComponent (ARFloat vec) = vec
 
 buildFromStrides :: Int -> Int -> Int -> ByteString -> [ByteString]
 buildFromStrides _stride _sizeOfElement 0 _bs = []
@@ -89,39 +187,70 @@ packMatrixColumns accessorType compSize count bs
         columnTrail = columnSize `mod` accessorMatrixColumnsAlignment
         alignedColumnSize = columnSize + (accessorMatrixColumnsAlignment - columnTrail)
 
--- This is valid only for non-sparse accessors!
-readRawAccessorWithBuffer :: V.Vector ByteString -> BufferView -> Accessor -> Either String AccessorRawData
-readRawAccessorWithBuffer boundBuffers bufferView@(BufferView {..}) accessor@(Accessor {..}) = do
+newtype Converted g = Converted { unConverted :: forall f a. (ParseScientific a, ParseFromList f, VS.Storable (f a)) => Either String (g (f a)) }
+
+convertAccessor' :: forall g. (StorableFunctor g) => Converted g -> Accessor -> Either String (AccessorComponent (AccessorContainer g))
+convertAccessor' converted (Accessor {..}) = do
+  let accessorContainer :: forall a. (ParseScientific a, VS.Storable a) => Either String (AccessorContainer g a)
+      {-# INLINE accessorContainer #-}
+      accessorContainer =
+        case accessorType of
+          ATScalar -> ARScalar <$> fmapStorable coerce <$> (unConverted converted :: Either String (g (V1 a)))
+          ATVec2 -> ARVec2 <$> unConverted converted
+          ATVec3 -> ARVec3 <$> unConverted converted
+          ATVec4 -> ARVec4 <$> unConverted converted
+          ATMat2 -> ARMat2 <$> fmapStorable (transpose . coerce) <$> (unConverted converted :: Either String (g (WM22 a)))
+          ATMat3 -> ARMat3 <$> fmapStorable (transpose . coerce) <$> (unConverted converted :: Either String (g (WM33 a)))
+          ATMat4 -> ARMat4 <$> fmapStorable (transpose . coerce) <$> (unConverted converted :: Either String (g (WM44 a)))
+
+  rawRet <-
+    case accessorComponentType of
+      CTByte -> ARByte <$> accessorContainer
+      CTUnsignedByte -> ARUByte <$> accessorContainer
+      CTShort -> ARShort <$> accessorContainer
+      CTUnsignedShort -> ARUShort <$> accessorContainer
+      CTUnsignedInt -> ARUInt <$> accessorContainer
+      CTFloat -> ARFloat <$> accessorContainer
+  let ret =
+        if fromMaybe False accessorNormalized then
+          ARFloat $ normalizeAccessorComponent rawRet
+        else
+          rawRet
+  return ret
+{-# INLINE convertAccessor' #-}
+
+convertMinMax :: (ParseScientific a, ParseFromList f) => Accessor -> Either String (AccessorMinMax (f a))
+convertMinMax (Accessor {..}) = do
+  let parseValue vec = do
+        conv <- mapM (maybe (Left "Invalid type for value") return . parseScientific) $ V.toList vec
+        maybe (Left "Invalid array size for value") return $ parseFromList conv
+  convertedMin <- mapM parseValue accessorMin
+  convertedMax <- mapM parseValue accessorMax
+  return $ AccessorMinMax {..}
+{-# INLINE convertMinMax #-}
+
+convertAccessorMinMax :: Accessor -> Either String AccessorMinMaxComponent
+convertAccessorMinMax accessor = convertAccessor' (Converted $ convertMinMax accessor) accessor
+
+convertAccessor :: V.Vector ByteString -> BufferView -> Accessor -> Either String ConvertedAccessorComponent
+convertAccessor boundBuffers bufferView@(BufferView {..}) accessor@(Accessor {..}) = do
+  when (isJust accessorSparse) $ Left "Sparse accessors are not supported"
   buffer <- getBufferViewBuffer boundBuffers bufferView
   unless (accessorIsValid bufferView accessor) $ Left "Buffer view is off buffer bounds"
+
   let clampedBS = packMatrixColumns accessorType compSize accessorCount $ packFromStrides stride sizeOfElement accessorCount $ B.drop offset buffer
 
-      vec :: forall a. VS.Storable a => VS.Vector a
-      vec = byteStringToVector clampedBS
-      accessorVec :: forall a. VS.Storable a => AccessorRawVector a
-      accessorVec =
-        case accessorType of
-          ATScalar -> ARScalar vec
-          ATVec2 -> ARVec2 vec
-          ATVec3 -> ARVec3 vec
-          ATVec4 -> ARVec4 vec
-          ATMat2 -> ARMat2 $ VS.map transpose vec
-          ATMat3 -> ARMat3 $ VS.map transpose vec
-          ATMat4 -> ARMat4 $ VS.map transpose vec
+      offset = fromMaybe 0 accessorByteOffset
+      compSize = componentSize accessorComponentType
+      sizeOfElement = accessorElementSize accessorType accessorComponentType
+      stride =
+        case fromMaybe 0 viewByteStride of
+          0 -> sizeOfElement
+          val -> val
 
-  return $
-    case accessorComponentType of
-      CTByte -> ARByte accessorVec
-      CTUnsignedByte -> ARUByte accessorVec
-      CTShort -> ARShort accessorVec
-      CTUnsignedShort -> ARUShort accessorVec
-      CTUnsignedInt -> ARUInt accessorVec
-      CTFloat -> ARFloat accessorVec
+      converted = Converted $ do
+        let convertedVector = byteStringToVector clampedBS
+        convertedMinMax <- convertMinMax accessor
+        return $ ConvertedAccessor {..}
 
-  where offset = fromMaybe 0 accessorByteOffset
-        compSize = componentSize accessorComponentType
-        sizeOfElement = accessorElementSize accessorType accessorComponentType
-        stride =
-          case fromMaybe 0 viewByteStride of
-            0 -> sizeOfElement
-            val -> val
+  convertAccessor' converted accessor
