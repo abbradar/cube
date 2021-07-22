@@ -17,12 +17,12 @@ module Data.GlTF.Accessors
   , AccessorValueComponent
   , ConvertedAccessorComponent
   , AccessorMinMaxComponent
-  , convertAccessor
-  , convertAccessorMinMax
+  , readRawAccessor
+  , prepareAccessor
+  , readAccessorMinMax
   ) where
 
 import Control.Monad
-import Data.Coerce
 import Data.Maybe
 import Data.Functor.Identity
 import Data.Word
@@ -34,6 +34,7 @@ import qualified Data.ByteString as B
 import Data.Vector.Storable.ByteString
 import Linear hiding (trace)
 
+import Data.Coerce.Functor
 import Data.Vector.Functor
 import Linear.Aeson
 import Linear.Matrix.Wrapper
@@ -83,6 +84,14 @@ deriving instance ( Show (f Int8)
                   , Show (f Float)
                   ) => Show (AccessorComponent f)
 
+mapAccessorComponent :: (forall a. (VS.Storable a, Num a) => f a -> f a) -> AccessorComponent f -> AccessorComponent f
+mapAccessorComponent f (ARByte x) = ARByte (f x)
+mapAccessorComponent f (ARUByte x) = ARUByte (f x)
+mapAccessorComponent f (ARShort x) = ARShort (f x)
+mapAccessorComponent f (ARUShort x) = ARUShort (f x)
+mapAccessorComponent f (ARUInt x) = ARUInt (f x)
+mapAccessorComponent f (ARFloat x) = ARFloat (f x)
+
 type AccessorContainerVector = AccessorContainer VS.Vector
 type AccessorContainerValue = AccessorContainer Identity
 
@@ -92,7 +101,7 @@ type AccessorValueComponent = AccessorComponent (AccessorContainer Identity)
 data ConvertedAccessor a = ConvertedAccessor { convertedVector :: VS.Vector a
                                              , convertedMinMax :: AccessorMinMax a
                                              }
-                         deriving (Show, Eq, Ord)
+                         deriving (Show, Eq, Ord, Coercible1)
 
 instance StorableFunctor ConvertedAccessor where
   fmapStorable f (ConvertedAccessor {..}) = ConvertedAccessor { convertedVector = fmapStorable f convertedVector
@@ -106,7 +115,7 @@ type ConvertedAccessorComponent = AccessorComponent (AccessorContainer Converted
 data AccessorMinMax a = AccessorMinMax { convertedMin :: Maybe a
                                        , convertedMax :: Maybe a
                                        }
-                      deriving (Show, Eq, Ord, Functor)
+                      deriving (Show, Eq, Ord, Functor, Coercible1)
 
 instance StorableFunctor AccessorMinMax where
   fmapStorable = fmap
@@ -127,6 +136,17 @@ normalizeAccessorComponent (ARShort vec) = fmapStorable normalizeSigned vec
 normalizeAccessorComponent (ARUShort vec) = fmapStorable normalizeUnsigned vec
 normalizeAccessorComponent (ARUInt vec) = fmapStorable normalizeUnsigned vec
 normalizeAccessorComponent (ARFloat vec) = vec
+
+transposeAccessorMatrices :: forall f. StorableFunctor f => AccessorComponent (AccessorContainer f) -> AccessorComponent (AccessorContainer f)
+transposeAccessorMatrices = mapAccessorComponent maybeTranspose
+  where maybeTranspose :: forall a. VS.Storable a => AccessorContainer f a -> AccessorContainer f a
+        maybeTranspose (ARScalar x) = ARScalar x
+        maybeTranspose (ARVec2 x) = ARVec2 x
+        maybeTranspose (ARVec3 x) = ARVec3 x
+        maybeTranspose (ARVec4 x) = ARVec4 x
+        maybeTranspose (ARMat2 x) = ARMat2 $ fmapStorable transpose x
+        maybeTranspose (ARMat3 x) = ARMat3 $ fmapStorable transpose x
+        maybeTranspose (ARMat4 x) = ARMat4 $ fmapStorable transpose x
 
 buildFromStrides :: Int -> Int -> Int -> ByteString -> [ByteString]
 buildFromStrides _stride _sizeOfElement 0 _bs = []
@@ -155,35 +175,37 @@ packMatrixColumns accessorType compSize count bs
 
 newtype Converted g = Converted { unConverted :: forall f a. (ParseScientific a, ParseFromList f, VS.Storable (f a)) => Either String (g (f a)) }
 
-convertAccessor' :: forall g. (StorableFunctor g) => Converted g -> Accessor -> Either String (AccessorComponent (AccessorContainer g))
-convertAccessor' converted (Accessor {..}) = do
-  let accessorContainer :: forall a. (ParseScientific a, VS.Storable a) => Either String (AccessorContainer g a)
+readAccessor' :: forall f. (Coercible1 f, StorableFunctor f) => Converted f -> Accessor -> Either String (AccessorComponent (AccessorContainer f))
+readAccessor' converted (Accessor {..}) = do
+  let accessorContainer :: forall a. (ParseScientific a, VS.Storable a) => Either String (AccessorContainer f a)
       {-# INLINE accessorContainer #-}
       accessorContainer =
         case accessorType of
-          ATScalar -> ARScalar <$> fmapStorable coerce <$> (unConverted converted :: Either String (g (V1 a)))
+          ATScalar -> ARScalar <$> coerce1 <$> (unConverted converted :: Either String (f (V1 a)))
           ATVec2 -> ARVec2 <$> unConverted converted
           ATVec3 -> ARVec3 <$> unConverted converted
           ATVec4 -> ARVec4 <$> unConverted converted
-          ATMat2 -> ARMat2 <$> fmapStorable (transpose . coerce) <$> (unConverted converted :: Either String (g (WM22 a)))
-          ATMat3 -> ARMat3 <$> fmapStorable (transpose . coerce) <$> (unConverted converted :: Either String (g (WM33 a)))
-          ATMat4 -> ARMat4 <$> fmapStorable (transpose . coerce) <$> (unConverted converted :: Either String (g (WM44 a)))
+          ATMat2 -> ARMat2 <$> coerce1 <$> (unConverted converted :: Either String (f (WM22 a)))
+          ATMat3 -> ARMat3 <$> coerce1 <$> (unConverted converted :: Either String (f (WM33 a)))
+          ATMat4 -> ARMat4 <$> coerce1 <$> (unConverted converted :: Either String (f (WM44 a)))
 
-  rawRet <-
-    case accessorComponentType of
-      CTByte -> ARByte <$> accessorContainer
-      CTUnsignedByte -> ARUByte <$> accessorContainer
-      CTShort -> ARShort <$> accessorContainer
-      CTUnsignedShort -> ARUShort <$> accessorContainer
-      CTUnsignedInt -> ARUInt <$> accessorContainer
-      CTFloat -> ARFloat <$> accessorContainer
-  let ret =
-        if fromMaybe False accessorNormalized then
-          ARFloat $ normalizeAccessorComponent rawRet
-        else
-          rawRet
-  return ret
-{-# INLINE convertAccessor' #-}
+  case accessorComponentType of
+    CTByte -> ARByte <$> accessorContainer
+    CTUnsignedByte -> ARUByte <$> accessorContainer
+    CTShort -> ARShort <$> accessorContainer
+    CTUnsignedShort -> ARUShort <$> accessorContainer
+    CTUnsignedInt -> ARUInt <$> accessorContainer
+    CTFloat -> ARFloat <$> accessorContainer
+{-# INLINE readAccessor' #-}
+
+prepareAccessor :: (StorableFunctor f) => Accessor -> AccessorComponent (AccessorContainer f) -> AccessorComponent (AccessorContainer f)
+prepareAccessor (Accessor {..}) container = container''
+  where container' =
+          if fromMaybe False accessorNormalized then
+            ARFloat $ normalizeAccessorComponent container
+          else
+            container
+        container'' = transposeAccessorMatrices container'
 
 convertMinMax :: (ParseScientific a, ParseFromList f) => Accessor -> Either String (AccessorMinMax (f a))
 convertMinMax (Accessor {..}) = do
@@ -195,11 +217,11 @@ convertMinMax (Accessor {..}) = do
   return $ AccessorMinMax {..}
 {-# INLINE convertMinMax #-}
 
-convertAccessorMinMax :: Accessor -> Either String AccessorMinMaxComponent
-convertAccessorMinMax accessor = convertAccessor' (Converted $ convertMinMax accessor) accessor
+readAccessorMinMax :: Accessor -> Either String AccessorMinMaxComponent
+readAccessorMinMax accessor = prepareAccessor accessor <$> readAccessor' (Converted $ convertMinMax accessor) accessor
 
-convertAccessor :: V.Vector ByteString -> BufferView -> Accessor -> Either String ConvertedAccessorComponent
-convertAccessor boundBuffers bufferView@(BufferView {..}) accessor@(Accessor {..}) = do
+readRawAccessor :: V.Vector ByteString -> BufferView -> Accessor -> Either String ConvertedAccessorComponent
+readRawAccessor boundBuffers bufferView@(BufferView {..}) accessor@(Accessor {..}) = do
   when (isJust accessorSparse) $ Left "Sparse accessors are not supported"
   buffer <- getBufferViewBuffer boundBuffers bufferView
   unless (accessorIsValid bufferView accessor) $ Left "Buffer view is off buffer bounds"
@@ -219,4 +241,4 @@ convertAccessor boundBuffers bufferView@(BufferView {..}) accessor@(Accessor {..
         convertedMinMax <- convertMinMax accessor
         return $ ConvertedAccessor {..}
 
-  convertAccessor' converted accessor
+  readAccessor' converted accessor

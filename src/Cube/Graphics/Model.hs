@@ -263,7 +263,7 @@ data PreparedAccessor = PreparedAccessor { preparedAccessor :: TF.Accessor
 
 type CubePipelineCache = PipelineCache ShaderKey PipelineMeta
 
-data LoadState = LoadState { currentBuffers :: IntMap Buffer
+data LoadState = LoadState { currentBufferViews :: IntMap Buffer
                            , currentAccessorsData :: IntMap TF.ConvertedAccessorComponent
                            , currentPreparedAccessors :: IntMap PreparedAccessor
                            }
@@ -276,17 +276,19 @@ data LoadInfo = LoadInfo { infoPipelineCache :: CubePipelineCache
 
 type ModelT m = StateT LoadState (ReaderT LoadInfo m)
 
-getBuffer :: MonadCube m => TF.BufferIndex -> ModelT m Buffer
-getBuffer idx = do
-  buffers <- gets currentBuffers
-  case IM.lookup idx buffers of
+getBufferView :: MonadCube m => TF.BufferViewIndex -> ModelT m Buffer
+getBufferView idx = do
+  bufferViews <- gets currentBufferViews
+  case IM.lookup idx bufferViews of
     Just buf -> return buf
     Nothing -> do
       sourceBuffers <- asks infoSourceBuffers
-      buffer <- newBufferFromBS (sourceBuffers V.! idx) $ \x -> x { accessHints = (Static, Draw)
-                                                                  , accessFlags = ReadAccess
-                                                                  }
-      modify $ \x -> x { currentBuffers = IM.insert idx buffer buffers }
+      sourceBufferViews <- asks infoBufferViews
+      bufferData <- either fail return $ TF.getBufferViewBuffer sourceBuffers (sourceBufferViews V.! idx)
+      buffer <- newBufferFromBS bufferData $ \x -> x { accessHints = (Static, Draw)
+                                                     , accessFlags = ReadAccess
+                                                     }
+      modify $ \x -> x { currentBufferViews = IM.insert idx buffer bufferViews }
       return buffer
 
 getAccessorData :: MonadCube m => TF.AccessorIndex -> ModelT m TF.ConvertedAccessorComponent
@@ -302,7 +304,8 @@ getAccessorData idx = do
           Nothing -> fail "Sparse data in accessors is not supported"
           Just bidx -> return bidx
       let bufferView = infoBufferViews V.! bufferIndex
-      accessorData <- either fail return $ TF.convertAccessor infoSourceBuffers bufferView accessor
+      rawAccessorData <- either fail return $ TF.readRawAccessor infoSourceBuffers bufferView accessor
+      let accessorData = TF.prepareAccessor accessor rawAccessorData
       modify $ \x -> x { currentAccessorsData = IM.insert idx accessorData accessors }
       return accessorData
 
@@ -320,16 +323,16 @@ getPreparedAccessor idx = do
     Nothing -> do
       LoadInfo {..} <- ask
       let accessor = infoAccessors V.! idx
-      bufferIndex <-
+      bufferViewIndex <-
         case TF.accessorBufferView accessor of
           Nothing -> fail "Sparse data in accessors is not supported"
           Just bidx -> return bidx
-      let bufferView = infoBufferViews V.! bufferIndex
+      let bufferView = infoBufferViews V.! bufferViewIndex
       unless (TF.accessorIsValid bufferView accessor) $ fail "Buffer view is off buffer bounds"
-      buffer <- getBuffer $ TF.viewBuffer bufferView
-      let prepared = PreparedAccessor { preparedOffset = fromMaybe 0 (TF.viewByteOffset bufferView) + fromMaybe 0 (TF.accessorByteOffset accessor)
+      preparedView <- getBufferView bufferViewIndex
+      let prepared = PreparedAccessor { preparedOffset = fromMaybe 0 (TF.accessorByteOffset accessor)
                                       , preparedStride = fromMaybe 0 (TF.viewByteStride bufferView)
-                                      , preparedBuffer = buffer
+                                      , preparedBuffer = preparedView
                                       , preparedAccessor = accessor
                                       }
       modify $ \x -> x { currentPreparedAccessors = IM.insert idx prepared accessors }
@@ -677,7 +680,7 @@ loadModel' (TF.BoundGlTF {..}) = do
 
 loadModel :: forall m. MonadCube m => PipelineCache ShaderKey PipelineMeta -> TF.BoundGlTF -> m LoadedModel
 loadModel plCache bound = do
-  let initial = LoadState { currentBuffers = IM.empty
+  let initial = LoadState { currentBufferViews = IM.empty
                           , currentAccessorsData = IM.empty
                           , currentPreparedAccessors = IM.empty
                           }

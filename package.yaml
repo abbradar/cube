@@ -52,6 +52,7 @@ default-extensions:
   - DeriveTraversable
   - DerivingStrategies
   - ScopedTypeVariables
+  - QuantifiedConstraints
   - LiberalTypeSynonyms
   - TemplateHaskell
   - QuasiQuotes

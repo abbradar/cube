@@ -37,6 +37,7 @@ library
       Cube.Types
       Cube.Utils
       Data.Aeson.Utils
+      Data.Coerce.Functor
       Data.GLSL.Preprocessor
       Data.GlTF.Accessors
       Data.GlTF.Binary
@@ -68,6 +69,7 @@ library
       DeriveTraversable
       DerivingStrategies
       ScopedTypeVariables
+      QuantifiedConstraints
       LiberalTypeSynonyms
       TemplateHaskell
       QuasiQuotes
@@ -153,6 +155,7 @@ executable triangle
       DeriveTraversable
       DerivingStrategies
       ScopedTypeVariables
+      QuantifiedConstraints
       LiberalTypeSynonyms
       TemplateHaskell
       QuasiQuotes
