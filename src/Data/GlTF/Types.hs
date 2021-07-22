@@ -23,6 +23,7 @@ module Data.GlTF.Types
   , Mesh(..)
   , NodeIndex
   , Node(..)
+  , SceneIndex
   , Scene(..)
   , ComponentType(..)
   , componentSize
@@ -145,6 +146,7 @@ data GlTF = GlTF { gltfAsset :: Asset
                  , gltfNodes :: Maybe (Vector Node)
                  , gltfMeshes :: Maybe (Vector Mesh)
                  , gltfScenes :: Maybe (Vector Scene)
+                 , gltfScene :: Maybe SceneIndex
                  , gltfSamplers :: Maybe (Vector Sampler)
                  , gltfTextures :: Maybe (Vector Texture)
                  , gltfImages :: Maybe (Vector Image)
@@ -280,6 +282,8 @@ data Node = Node { nodeName :: Maybe Text
 
 instance FromJSON Node where
   parseJSON = genericParseJSON $ gltfOptions "node"
+
+type SceneIndex = Int
 
 data Scene = Scene { sceneName :: Maybe Text
                    , sceneNodes :: Set NodeIndex

@@ -175,7 +175,7 @@ drawPreparedNodesGeneric setFirstPipeline (Screen {..}) camera = foldM_ drawPipe
               setPipelineUniform pipelineNormalMatrix $ transpose $ inv44 (viewMatrix !*! preparedModelMatrix)
               mapM_ drawR preparedDrawCommands
 
-          return False
+          return True
 
 drawPreparedNodes :: MonadCube m => ScreenF -> CameraF -> PreparedNodes -> DrawT m ()
 drawPreparedNodes = drawPreparedNodesGeneric True
