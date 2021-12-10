@@ -23,7 +23,8 @@ in vec3 vertNormal;
 #endif
 #endif
 
-#define MAKE_COLOR_TYPE(count) vec##count
+#define __MAKE_COLOR_TYPE(count) vec##count
+#define MAKE_COLOR_TYPE(count) __MAKE_COLOR_TYPE(count)
 
 #ifdef COLOR_0_COMPONENTS
 #define COLOR_0_TYPE MAKE_COLOR_TYPE(COLOR_0_COMPONENTS)
@@ -33,7 +34,8 @@ in COLOR_0_TYPE vertColor;
 
 uniform vec4 uniBaseColorFactor;
 
-#define MAKE_TEXTURE_COORD(idx) vertTexCoord_##idx
+#define __MAKE_TEXTURE_COORD(idx) vertTexCoord_##idx
+#define MAKE_TEXTURE_COORD(idx) __MAKE_TEXTURE_COORD(idx)
 
 #ifdef BASE_COLOR_TEXTURE_IDX
 #define BASE_COLOR_TEXTURE_COORD MAKE_TEXTURE_COORD(BASE_COLOR_TEXTURE_IDX)
