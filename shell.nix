@@ -25,6 +25,10 @@ let
     # LD_LIBRARY_PATH = "";
   });
 
+  drv_ = drv.overrideAttrs (self: {
+    passthru = self.passthru // { shell = shell; };
+  });
+
 in
 
-  if pkgs.lib.inNixShell then shell else drv
+  if pkgs.lib.inNixShell then drv_.shell else drv_
