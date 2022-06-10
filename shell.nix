@@ -2,17 +2,22 @@
 
 let
 
-  inherit (nixpkgs) pkgs;
+  inherit (nixpkgs) pkgs lib;
 
   haskellPackages_ = if compiler == "default"
                         then pkgs.haskellPackages
                         else pkgs.haskell.packages.${compiler};
 
-  lib = pkgs.haskell.lib;
+  hlib = pkgs.haskell.lib;
 
   haskellPackages = haskellPackages_.override {
     overrides = self: super: {
-      caramia = lib.dontCheck (self.callPackage ./3rdparty/caramia { });
+      caramia = hlib.dontCheck (self.callPackage ./3rdparty/caramia { });
+      sdl2 =
+        if lib.versionOlder "2.5.3.2" super.sdl2.version then
+          super.sdl2
+        else
+          hlib.dontCheck (self.callPackage ./3rdparty/sdl2.nix { });
     };
   };
 
@@ -31,4 +36,4 @@ let
 
 in
 
-  if pkgs.lib.inNixShell then drv_.shell else drv_
+  if lib.inNixShell then drv_.shell else drv_
