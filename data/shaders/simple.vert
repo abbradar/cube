@@ -44,21 +44,29 @@ uniform mat4 uniModelMatrix;
 uniform mat4 uniNormalMatrix;
 #endif
 
+
+#if WEIGHTS_COUNT >= 1
+#define MAX_BONES 4
+#define MAX_BONES_PER_MESH 32
+uniform mat4 uniBoneMatrices[MAX_BONES_PER_MESH];
+uniform mat4 uniOffsetMatrices[MAX_BONES_PER_MESH];
+in ivec4 attrJoint;
+in vec4 attrWeight;
+vec4 blendPosition = vec4(0.0, 0.0, 0.0, 0.0);
+#ifdef HAS_NORMALS
+#ifdef HAS_TANGENTS
+mat4 blendTangent = vec4(0.0, 0.0, 0.0, 0.0);
+#else
+vec4 blendNormal = vec4(0.0, 0.0, 0.0, 0.0);
+#endif
+#endif
+#endif //weights
+
 void main()
 {
     vec4 pos = vec4(attrPosition, 1.0);
     vertPosition = vec3(pos.xyz) / pos.w;
 
-#ifdef HAS_NORMALS
-#ifdef HAS_TANGENTS
-        vec3 normalW = normalize(vec3(uniNormalMatrix * vec4(attrNormal, 0.0)));
-        vec3 tangentW = normalize(vec3(uniModelMatrix * vec4(attrTangent.xyz, 0.0)));
-        vec3 bitangentW = cross(normalW, tangentW) * a_Tangent.w;
-        vertTBN = mat3(tangentW, bitangentW, normalW);
-#else // !HAS_TANGENTS
-        vertNormal = normalize(vec3(uniNormalMatrix * vec4(attrNormal, 0.0)));
-#endif
-#endif // !HAS_NORMALS
 
 #if TEX_COORDS_COUNT >= 1
     vertTexCoord_0 = attrTexCoord_0;
@@ -70,6 +78,42 @@ void main()
 #if COLORS_COUNT >= 1
     vertColor = attrColor;
 #endif
-
+#if WEIGHTS_COUNT >=1
+    int ind = 0;
+    for(int i = 0; i < MAX_BONES; i++) {
+        ind = int(attrJoint[i]);
+        blendPosition += attrWeight[ind] * uniBoneMatrices[ind] * uniOffsetMatrices[ind] * pos;
+#ifdef HAS_NORMALS
+        blendNormal += attrWeight[ind] * uniBoneMatrices[ind] * uniOffsetMatrices[ind] * vec4(attrNormal, 0.0);
+#ifdef HAS_TANGENTS
+        blendTangent += attrWeight[ind] * uniBoneMatrices[ind] * uniOffsetMatrices[ind] * vec4(attrTangent.xyz, 0.0);
+#endif
+#endif // !HAS_NORMALS
+    }
+#ifdef HAS_NORMALS
+#ifdef HAS_TANGENTS
+    vec3 normalW = normalize(vec3(blendNormal));
+    vec3 tangentW = normalize(vec3(blendTangent));
+    vec3 bitangentW = cross(normalW, tangentW) * a_Tangent.w
+    vertTBN = mat3(tangentW, bitangentW, normalW;
+#else // !HAS_TANGENTS
+    vertNormal = normalize(vec3(blendNormal));
+#endif
+#endif //!HAS_NORMALS
+    gl_Position = uniViewProjectionMatrix * blendPosition;
+#else //!HAS_WEIGHTS
+#ifdef HAS_NORMALS
+#ifdef HAS_TANGENTS
+        vec3 normalW = normalize(vec3(uniNormalMatrix * vec4(attrNormal, 0.0)));
+        vec3 tangentW = normalize(vec3(uniModelMatrix * vec4(attrTangent.xyz, 0.0)));
+        vec3 bitangentW = cross(normalW, tangentW) * a_Tangent.w;
+        vertTBN = mat3(tangentW, bitangentW, normalW);
+#else // !HAS_TANGENTS
+        vertNormal = normalize(vec3(uniNormalMatrix * vec4(attrNormal, 0.0)));
+#endif
+#endif // !HAS_NORMALS
     gl_Position = uniViewProjectionMatrix * uniModelMatrix * pos;
+#endif
+
+
 }
