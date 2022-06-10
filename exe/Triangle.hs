@@ -188,7 +188,8 @@ gameNetwork (GameWindow { gameSettings = GameSettings {..}, ..}) (GameInitialSta
       mouseCameraStep = fmap ((Nothing, ) . Just) normalizedMouseMoveStep
       cameraStep = mergeWith (\(moveA, rotateA) (moveB, rotateB) -> (moveA <|> moveB, rotateA <|> rotateB)) [kbdCameraStep, mouseCameraStep]
 
-  playerCamera <- foldDynM updateCamera mempty cameraStep
+  -- playerCamera <- foldDynM updateCamera mempty cameraStep
+  playerCamera <- foldDynM updateCamera (Camera { cameraPosition = V3 2 (-1) 4, cameraRotation = Quaternion 1 0}) cameraStep
 
   let screen = fmap (\(V2 width height) -> perspectiveScreen gameFovRadians (fromIntegral width / fromIntegral height) gameNearPlane gameFarPlane) windowSize
       scene = constant initialScene

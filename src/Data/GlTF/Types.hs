@@ -21,6 +21,7 @@ module Data.GlTF.Types
   , Primitive(..)
   , MeshIndex
   , Mesh(..)
+  , Skin(..)
   , NodeIndex
   , Node(..)
   , SceneIndex
@@ -80,6 +81,17 @@ import qualified Data.Text as T
 import qualified Data.Text.Read as T
 import Data.HashMap.Strict (HashMap)
 import Data.Aeson
+    ( defaultOptions,
+      Options(constructorTagModifier, omitNothingFields,
+              fieldLabelModifier),
+      Value,
+      FromJSONKey(fromJSONKey),
+      FromJSON(parseJSON),
+      ToJSON(toEncoding, toJSON),
+      genericParseJSON,
+      withScientific,
+      withText,
+      FromJSONKeyFunction(FromJSONKeyTextParser) )
 import qualified Data.Aeson.Types as JSON
 import Data.Hashable
 import Linear
@@ -145,6 +157,7 @@ data GlTF = GlTF { gltfAsset :: Asset
                  , gltfAccessors :: Maybe (Vector Accessor)
                  , gltfNodes :: Maybe (Vector Node)
                  , gltfMeshes :: Maybe (Vector Mesh)
+                 , gltfSkins :: Maybe (Vector Skin)
                  , gltfScenes :: Maybe (Vector Scene)
                  , gltfScene :: Maybe SceneIndex
                  , gltfSamplers :: Maybe (Vector Sampler)
@@ -257,6 +270,7 @@ instance FromJSON Primitive where
   parseJSON = genericParseJSON $ gltfOptions "primitive"
 
 type MeshIndex = Int
+type SkinIndex = Int
 
 data Mesh = Mesh { meshName :: Maybe Text
                  , meshPrimitives :: Vector Primitive
@@ -264,8 +278,19 @@ data Mesh = Mesh { meshName :: Maybe Text
                  }
           deriving (Show, Generic)
 
+
 instance FromJSON Mesh where
   parseJSON = genericParseJSON $ gltfOptions "mesh"
+
+data Skin = Skin { skinName :: Maybe Text
+                 , skinJoints :: Vector SkinIndex
+                 , skinIBM :: Maybe AccessorIndex
+                 , skinExtras :: Maybe ExtrasMap
+                 }
+          deriving (Show, Generic)
+
+instance FromJSON Skin where
+  parseJSON = genericParseJSON $ gltfOptions "skin"
 
 type NodeIndex = Int
 
@@ -275,6 +300,7 @@ data Node = Node { nodeName :: Maybe Text
                  , nodeScale :: Maybe (V3 Float)
                  , nodeTranslation :: Maybe (V3 Float)
                  , nodeMatrix :: Maybe (WM44 Float)
+                 , nodeSkin :: Maybe SkinIndex
                  , nodeChildren :: Maybe (Vector NodeIndex)
                  , nodeExtras :: Maybe ExtrasMap
                  }

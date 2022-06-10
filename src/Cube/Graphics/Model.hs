@@ -71,11 +71,15 @@ type MaterialId = Int
 
 data LoadedNodeTree = LoadedNodeTree { lnodeTrs :: TRSF
                                      , lnodeMesh :: Maybe LoadedMesh
+                                     , lnodeSkin :: Maybe LoadedSkin
                                      , lnodeIndex :: TF.NodeIndex
                                      , lnodeChildren :: Vector LoadedNodeTree
                                      }
 
 newtype LoadedMesh = LoadedMesh { lmeshPrimitives :: Vector LoadedPrimitive
+                                }
+
+newtype LoadedSkin = LoadedSkin { lskinJoints :: Vector TF.NodeIndex
                                 }
 
 data TextureType = BaseColorTexture
@@ -498,6 +502,10 @@ loadMaterial textures index (TF.Material {..}) =
 defaultMaterial :: LoadedMaterial
 defaultMaterial = loadMaterial V.empty (-1) TF.defaultMaterial
 
+
+loadSkin :: MonadCube m => TF.Skin -> ModelT m (Maybe LoadedSkin)
+loadSkin skin@(TF.Skin {..}) = undefined
+
 loadPrimitive :: MonadCube m => Vector LoadedMaterial -> TF.Primitive -> ModelT m (Maybe LoadedPrimitive)
 loadPrimitive materials primitive@(TF.Primitive {..})
   | not (TF.ATPosition `HM.member` primitiveAttributes) = return Nothing
@@ -580,6 +588,8 @@ data PipelineMeta = PipelineMeta { pipelineAttributes :: HashMap TF.AttributeTyp
                                  , pipelineAlphaCutoff :: Maybe UniformLocation
                                  , pipelineCamera :: Maybe UniformLocation
                                  , pipelineTextures :: HashMap TextureType UniformLocation
+                                 , pipelineBoneMatrices :: Maybe UniformLocation
+                                 , pipelineOffsetMatrices :: Maybe UniformLocation
                                  , pipelineId :: PipelineId -- Used for fast indexing
                                  }
                   deriving (Show, Eq)
@@ -612,7 +622,11 @@ getPipelineAttributes loadedAttributes = HM.fromList <$> mapM mapAttribute (HM.e
 getPipelineUniforms :: HashMap UniformName (UniformLocation, UniformInfo) -> Either String [PipelineMeta -> PipelineMeta]
 getPipelineUniforms loadedUniforms = mapM mapAttribute (HM.elems loadedUniforms)
   where mapAttribute (idx, UniformInfo {..})
-          | uniformSize /= 1 = Left "Array uniforms are not supported"
+          | uniformSize /= 1 =
+            case uniformName of
+              "uniBoneMatrices[0]" -> return $ \x -> x { pipelineBoneMatrices = Just idx }
+              "uniOffsetMatrices[0]" -> return $ \x -> x { pipelineOffsetMatrices = Just idx }
+              _ -> Left [i|Unknown array uniform #{uniformName}|]
           | otherwise =
             case uniformName of
               "uniViewProjectionMatrix" -> return $ \x -> x { pipelineViewProjectionMatrix = Just idx }
@@ -642,6 +656,8 @@ getPipelineMeta (LoadedPipeline {..}) = do
                                        , pipelineAlphaCutoff = Nothing
                                        , pipelineCamera = Nothing
                                        , pipelineTextures = HM.empty
+                                       , pipelineBoneMatrices = Nothing
+                                       , pipelineOffsetMatrices = Nothing
                                        , pipelineId = plId
                                        }
         return $ foldr ($) initialMeta plUniformUpdates
@@ -655,6 +671,7 @@ loadModel' (TF.BoundGlTF {..}) = do
 
   let materials = V.imap (loadMaterial textures) $ fromMaybe V.empty $ TF.gltfMaterials boundGltf
       meshes = fromMaybe V.empty $ TF.gltfMeshes boundGltf
+      skins = fromMaybe V.empty $ TF.gltfSkins boundGltf
 
       loadNode (TF.NodeTree {..}) = do
         lnodeTrs <-
@@ -663,7 +680,9 @@ loadModel' (TF.BoundGlTF {..}) = do
             Right r -> return r
         let runLoadMesh meshIndex = loadMesh materials mesh
               where mesh = meshes V.! meshIndex
+        let runLoadSkin skinIndex = loadSkin $ skins V.! skinIndex
         lnodeMesh <- join <$> mapM runLoadMesh (TF.nodeMesh nodeTreeNode)
+        lnodeSkin <- join <$> mapM runLoadSkin (TF.nodeSkin nodeTreeNode)
         lnodeChildren <- mapM loadNode nodeTreeChildren
         return LoadedNodeTree { lnodeIndex = nodeTreeIndex
                               , ..
