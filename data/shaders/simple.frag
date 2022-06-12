@@ -56,7 +56,7 @@ void main()
 #endif
 
 #ifdef HAS_ALPHA_CUTOFF
-    // Late discard to avaoid sampling artifacts. See https://github.com/KhronosGroup/glTF-Sample-Viewer/issues/267
+    // Late discard to avoid sampling artifacts. See https://github.com/KhronosGroup/glTF-Sample-Viewer/issues/267
     if (color.a < uniAlphaCutoff)
         discard;
 #endif

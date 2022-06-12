@@ -79,14 +79,14 @@ void main()
     vertColor = attrColor;
 #endif
 #if WEIGHTS_COUNT >=1
-    int ind = 0;
     for(int i = 0; i < MAX_BONES; i++) {
-        ind = int(attrJoint[i]);
-        blendPosition += attrWeight[ind] * uniBoneMatrices[ind] * uniOffsetMatrices[ind] * pos;
+        int ind = attrJoint[i];
+        mat4 boneMatrix = attrWeight[ind] * uniBoneMatrices[ind] * uniOffsetMatrices[ind];
+        blendPosition += boneMatrix * pos;
 #ifdef HAS_NORMALS
-        blendNormal += attrWeight[ind] * uniBoneMatrices[ind] * uniOffsetMatrices[ind] * vec4(attrNormal, 0.0);
+        blendNormal += boneMatrix * vec4(attrNormal, 0.0);
 #ifdef HAS_TANGENTS
-        blendTangent += attrWeight[ind] * uniBoneMatrices[ind] * uniOffsetMatrices[ind] * vec4(attrTangent.xyz, 0.0);
+        blendTangent += boneMatrix * vec4(attrTangent.xyz, 0.0);
 #endif
 #endif // !HAS_NORMALS
     }
