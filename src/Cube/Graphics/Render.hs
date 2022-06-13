@@ -140,7 +140,7 @@ prepareSceneGraphModel initialTrs (ModelInstance { instanceModel = SceneGraphMod
 
                   where LoadedMaterial {..} = halfPreparedMaterial
                         prepareSkin lskin = PreparedSkin{ preparedIBM = lskinIBM lskin
-                                                        , preparedJoints = VS.convert $ (trsToMatrix . lnodeTrs) <$> lskinJoints lskin
+                                                        , preparedJoints = traceShowId $ VS.convert $ (trsToMatrix . hlnodeTrs) <$> lskinJoints lskin
                                                         }
                         preparedMesh = PreparedMesh { preparedModelMatrix = trsMatrix
                                                     , preparedSkinning = fmap prepareSkin (lnodeSkin tree')
