@@ -7,6 +7,7 @@ module Cube.Graphics.Model
   ( AnimationName
   , LoadedModel(..)
   , LoadedNodeTree(..)
+  , HalfLoadedNodeTree(..)
   , LoadedSampler(..)
   , LoadedSamplerGroup(..)
   , foldMapLoadedSamplerGroup
@@ -82,10 +83,12 @@ data LoadedNodeTree = LoadedNodeTree { lnodeTrs :: TRSF
 newtype LoadedMesh = LoadedMesh { lmeshPrimitives :: Vector LoadedPrimitive
                                 }
 
-data LoadedSkin = LoadedSkin { lskinJoints :: Vector LoadedNodeTree
+data LoadedSkin = LoadedSkin { lskinJoints :: Vector HalfLoadedNodeTree
                              , lskinIBM :: VS.Vector M44F
                              }
                --   deriving (Show, Eq)
+instance Show LoadedSkin where
+  show LoadedSkin{..} = show (length lskinJoints) ++ " " ++ show lskinIBM
 
 data TextureType = BaseColorTexture
                  deriving (Show, Eq, Ord, Bounded, Enum, Generic, Typeable, Hashable)
@@ -684,6 +687,14 @@ getPipelineMeta (LoadedPipeline {..}) = do
         return $ foldr ($) initialMeta plUniformUpdates
   either fail return run
 
+data HalfLoadedNodeTree = HalfLoadedNodeTree { hlnodeTrs :: TRSF
+                                             , hlnodeMesh :: Maybe LoadedMesh
+                                             , hlnodeSkin :: Maybe HalfLoadedSkin
+                                             , hlnodeIndex :: TF.NodeIndex
+                                             , hlnodeChildren :: Vector HalfLoadedNodeTree
+                                             }
+        -- TODO allow unambigous same record field names
+
 loadModel' :: forall m. MonadCube m => TF.BoundGlTF -> ModelT m (Vector LoadedNodeTree, HashMap AnimationName (LoadedAnimation EmptySamplerState))
 loadModel' (TF.BoundGlTF {..}) = do
   imageBuffers <- mapM loadImageBuffer boundImages
@@ -694,23 +705,22 @@ loadModel' (TF.BoundGlTF {..}) = do
       meshes = fromMaybe V.empty $ TF.gltfMeshes boundGltf
       skins = fromMaybe V.empty $ TF.gltfSkins boundGltf
 
-      halfLoadNode :: TF.NodeTree -> StateT LoadState (ReaderT LoadInfo m) (LoadedNodeTree, Maybe HalfLoadedSkin)
+      halfLoadNode :: TF.NodeTree -> StateT LoadState (ReaderT LoadInfo m) HalfLoadedNodeTree
       halfLoadNode (TF.NodeTree {..}) = do
-        lnodeTrs <-
+        hlnodeTrs <-
           case nodeTransform nodeTreeNode of
             Left e -> fail $ "Failed to read node transformation values: " ++ e
             Right r -> return r
         let runLoadMesh meshIndex = loadMesh materials mesh
               where mesh = meshes V.! meshIndex
         let runLoadSkin skinIndex = loadSkin $ skins V.! skinIndex
-        lnodeMesh <- join <$> mapM runLoadMesh (TF.nodeMesh nodeTreeNode)
+        hlnodeMesh <- join <$> mapM runLoadMesh (TF.nodeMesh nodeTreeNode)
         lSkin <- join <$> mapM runLoadSkin (TF.nodeSkin nodeTreeNode)
-        lnodeChildren' <- mapM halfLoadNode nodeTreeChildren
-        return (LoadedNodeTree { lnodeIndex = nodeTreeIndex
-                              , lnodeSkin = Nothing
-                              , lnodeChildren = fst <$> lnodeChildren'
-                              , ..
-                              }, lSkin)
+        hlnodeChildren <- mapM halfLoadNode nodeTreeChildren
+        return HalfLoadedNodeTree{ hlnodeSkin = lSkin
+                                 , hlnodeIndex = nodeTreeIndex
+                                 , ..
+                                 }
 
   treeNodes <-
     case TF.gltfNodeTree $ fromMaybe V.empty $ TF.gltfNodes boundGltf of
@@ -718,11 +728,22 @@ loadModel' (TF.BoundGlTF {..}) = do
       Right r -> return r
 
   nodes' <- mapM halfLoadNode treeNodes
-  let finalizeNode :: Vector (LoadedNodeTree, Maybe HalfLoadedSkin) -> (LoadedNodeTree, Maybe HalfLoadedSkin) -> StateT LoadState (ReaderT LoadInfo m) LoadedNodeTree
-      finalizeNode _ (tree, Nothing) = do return tree
-      finalizeNode fNodes (LoadedNodeTree {..}, Just HalfLoadedSkin{..}) = do
-        let nds = fst <$> fNodes
-        return LoadedNodeTree{ lnodeSkin = Just LoadedSkin{ lskinJoints = fmap (nds V.!) hlskinJoints, lskinIBM = hlskinIBM  }
+  let finalizeNode :: Vector HalfLoadedNodeTree -> HalfLoadedNodeTree -> StateT LoadState (ReaderT LoadInfo m) LoadedNodeTree
+      finalizeNode fNodes HalfLoadedNodeTree{hlnodeSkin = Nothing, ..} = do
+        lnodeChildren <- mapM (finalizeNode fNodes) hlnodeChildren
+        return LoadedNodeTree{ lnodeTrs = hlnodeTrs
+                             , lnodeMesh = hlnodeMesh
+                             , lnodeIndex = hlnodeIndex
+                             , lnodeSkin = Nothing
+                             , ..
+                             }
+      finalizeNode fNodes HalfLoadedNodeTree{hlnodeSkin = Just HalfLoadedSkin{..}, ..} = do
+        let nds = fNodes
+        lnodeChildren <- mapM (finalizeNode fNodes) hlnodeChildren
+        let lnodeSkin = traceShowId $ Just LoadedSkin{ lskinJoints = fmap (nds V.!) hlskinJoints, lskinIBM = hlskinIBM  }
+        return LoadedNodeTree{ lnodeTrs = hlnodeTrs
+                             , lnodeMesh = hlnodeMesh
+                             , lnodeIndex = hlnodeIndex
                              , ..
                              }
   nodes <- mapM (finalizeNode nodes') nodes'
