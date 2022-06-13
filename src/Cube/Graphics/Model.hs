@@ -13,6 +13,7 @@ module Cube.Graphics.Model
   , LoadedAnimation(..)
   , EmptySamplerState(..)
   , LoadedMesh(..)
+  , LoadedSkin(..)
   , TextureType(..)
   , LoadedPrimitive(..)
   , MaterialId
