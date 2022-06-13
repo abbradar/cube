@@ -19,6 +19,7 @@ import qualified Data.IntMap.Strict as IM
 import Data.HashMap.Strict (HashMap)
 import qualified Data.HashMap.Strict as HM
 import qualified Data.Vector as V
+import qualified Data.Vector.Storable as VS
 import Control.Monad.State.Strict
 import Graphics.Caramia
 import Linear
@@ -36,7 +37,7 @@ import Cube.Graphics.Scene.Runtime
 import Debug.Trace
 
 data PreparedMesh = PreparedMesh { preparedModelMatrix :: M44F
-                                 , preparedSkinning :: Maybe PreparedSkinning
+                                 , preparedSkinning :: Maybe PreparedSkin
                                  , preparedDrawCommands :: [DrawCommand]
                                  }
 
@@ -45,9 +46,9 @@ instance Semigroup PreparedMesh where
                         , preparedSkinning = preparedSkinning b
                         , preparedDrawCommands = preparedDrawCommands a ++ preparedDrawCommands b
                         }
-data PreparedSkinning = PreparedSkinning { preparedIBM :: V.Vector M44F
-                                         , preparedJoints :: V.Vector M44F
-                                         }
+data PreparedSkin = PreparedSkin { preparedIBM :: VS.Vector M44F
+                                 , preparedJoints :: VS.Vector M44F
+                                 }
                         deriving (Show, Eq)
 
 data PreparedMaterialMeshes = PreparedMaterialMeshes { preparedTextures :: IntMap Texture
@@ -104,11 +105,11 @@ prepareSceneGraphModel initialTrs (ModelInstance { instanceModel = SceneGraphMod
       Just animRef -> fmap (lanimNodes . astateAnimation) $ liftIO $ readIORef animRef
 
   let go :: TRSF -> LoadedNodeTree -> StateT PreparedNodes m ()
-      go parentTrs (LoadedNodeTree {..}) = do
-        let animTrs = maybe mempty groupAnimationMorph $ IM.lookup lnodeIndex animationNodes
-            trs = parentTrs <> lnodeTrs <> animTrs
+      go parentTrs tree' = do
+        let animTrs = maybe mempty groupAnimationMorph $ IM.lookup (lnodeIndex tree') animationNodes
+            trs = parentTrs <> (lnodeTrs tree') <> animTrs
             trsMatrix = trsToMatrix trs
-        case lnodeMesh of
+        case (lnodeMesh tree') of
           Nothing -> return ()
           Just (LoadedMesh {..}) -> do
             let halfMapPrimitive (LoadedPrimitive {..}) = (pipelineId lprimPipelineMeta, preparedPl)
@@ -138,15 +139,18 @@ prepareSceneGraphModel initialTrs (ModelInstance { instanceModel = SceneGraphMod
                                          }
 
                   where LoadedMaterial {..} = halfPreparedMaterial
+                        prepareSkin lskin = PreparedSkin{ preparedIBM = lskinIBM lskin
+                                                        , preparedJoints = VS.convert $ (trsToMatrix . lnodeTrs) <$> lskinJoints lskin
+                                                        }
                         preparedMesh = PreparedMesh { preparedModelMatrix = trsMatrix
-                                                    , preparedSkinning = Nothing
+                                                    , preparedSkinning = fmap prepareSkin (lnodeSkin tree')
                                                     , preparedDrawCommands = halfPreparedCommands
                                                     }
 
             let prepared = IM.map finalizePipeline $ IM.fromListWith (<>) $ map halfMapPrimitive $ V.toList lmeshPrimitives
             modify' $ IM.unionWith (<>) prepared
 
-        mapM_ (go trs) lnodeChildren
+        mapM_ (go trs) (lnodeChildren tree')
 
   mapM_ (go initialTrs) $ loadedNodes sgmModel
 
