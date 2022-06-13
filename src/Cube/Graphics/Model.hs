@@ -66,6 +66,8 @@ import Cube.Graphics.Types
 import Cube.Graphics.TRS
 import Cube.Graphics.ShadersCache
 
+import Debug.Trace
+
 type AnimationName = Text
 type MaterialId = Int
 
@@ -79,8 +81,10 @@ data LoadedNodeTree = LoadedNodeTree { lnodeTrs :: TRSF
 newtype LoadedMesh = LoadedMesh { lmeshPrimitives :: Vector LoadedPrimitive
                                 }
 
-newtype LoadedSkin = LoadedSkin { lskinJoints :: Vector TF.NodeIndex
-                                }
+data LoadedSkin = LoadedSkin { lskinJoints :: Vector LoadedNodeTree
+                             , lskinIBM :: VS.Vector M44F
+                             }
+               --   deriving (Show, Eq)
 
 data TextureType = BaseColorTexture
                  deriving (Show, Eq, Ord, Bounded, Enum, Generic, Typeable, Hashable)
@@ -503,8 +507,24 @@ defaultMaterial :: LoadedMaterial
 defaultMaterial = loadMaterial V.empty (-1) TF.defaultMaterial
 
 
-loadSkin :: MonadCube m => TF.Skin -> ModelT m (Maybe LoadedSkin)
-loadSkin skin@(TF.Skin {..}) = undefined
+data HalfLoadedSkin = HalfLoadedSkin { hlskinJoints :: Vector Int
+                                     , hlskinIBM :: VS.Vector M44F
+                                     }
+                      deriving (Show, Eq)
+
+loadSkin :: MonadCube m => TF.Skin -> ModelT m (Maybe HalfLoadedSkin)
+loadSkin TF.Skin {..} =
+  case skinInverseBindMatrices of
+    Nothing -> return Nothing
+    Just skinIBM' -> do
+      rawIBM <- getAccessorData skinIBM'
+      lskinIBM' <-
+        case rawIBM of
+          TF.ARFloat (TF.ARMat4 x) -> return x
+          _ -> fail "invalid inverse bind matrices"
+      let hlskinJoints = skinJoints
+      let hlskinIBM = TF.convertedVector lskinIBM'
+      return $ Just HalfLoadedSkin{..}
 
 loadPrimitive :: MonadCube m => Vector LoadedMaterial -> TF.Primitive -> ModelT m (Maybe LoadedPrimitive)
 loadPrimitive materials primitive@(TF.Primitive {..})
@@ -673,7 +693,8 @@ loadModel' (TF.BoundGlTF {..}) = do
       meshes = fromMaybe V.empty $ TF.gltfMeshes boundGltf
       skins = fromMaybe V.empty $ TF.gltfSkins boundGltf
 
-      loadNode (TF.NodeTree {..}) = do
+      halfLoadNode :: TF.NodeTree -> StateT LoadState (ReaderT LoadInfo m) (LoadedNodeTree, Maybe HalfLoadedSkin)
+      halfLoadNode (TF.NodeTree {..}) = do
         lnodeTrs <-
           case nodeTransform nodeTreeNode of
             Left e -> fail $ "Failed to read node transformation values: " ++ e
@@ -682,18 +703,28 @@ loadModel' (TF.BoundGlTF {..}) = do
               where mesh = meshes V.! meshIndex
         let runLoadSkin skinIndex = loadSkin $ skins V.! skinIndex
         lnodeMesh <- join <$> mapM runLoadMesh (TF.nodeMesh nodeTreeNode)
-        lnodeSkin <- join <$> mapM runLoadSkin (TF.nodeSkin nodeTreeNode)
-        lnodeChildren <- mapM loadNode nodeTreeChildren
-        return LoadedNodeTree { lnodeIndex = nodeTreeIndex
+        lSkin <- join <$> mapM runLoadSkin (TF.nodeSkin nodeTreeNode)
+        lnodeChildren' <- mapM halfLoadNode nodeTreeChildren
+        return (LoadedNodeTree { lnodeIndex = nodeTreeIndex
+                              , lnodeSkin = Nothing
+                              , lnodeChildren = fst <$> lnodeChildren'
                               , ..
-                              }
+                              }, lSkin)
 
   treeNodes <-
     case TF.gltfNodeTree $ fromMaybe V.empty $ TF.gltfNodes boundGltf of
       Left e -> fail $ "Failed to build node tree: " ++ e
       Right r -> return r
 
-  nodes <- mapM loadNode treeNodes
+  nodes' <- mapM halfLoadNode treeNodes
+  let finalizeNode :: Vector (LoadedNodeTree, Maybe HalfLoadedSkin) -> (LoadedNodeTree, Maybe HalfLoadedSkin) -> StateT LoadState (ReaderT LoadInfo m) LoadedNodeTree
+      finalizeNode _ (tree, Nothing) = do return tree
+      finalizeNode fNodes (LoadedNodeTree {..}, Just HalfLoadedSkin{..}) = do
+        let nds = fst <$> fNodes
+        return LoadedNodeTree{ lnodeSkin = Just LoadedSkin{ lskinJoints = fmap (nds V.!) hlskinJoints, lskinIBM = hlskinIBM  }
+                             , ..
+                             }
+  nodes <- mapM (finalizeNode nodes') nodes'
   animations <- fmap (HM.fromList . catMaybes) $ mapM loadAnimation $ V.toList $ fromMaybe V.empty $ TF.gltfAnimations boundGltf
   return (nodes, animations)
 

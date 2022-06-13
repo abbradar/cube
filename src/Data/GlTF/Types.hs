@@ -284,7 +284,7 @@ instance FromJSON Mesh where
 
 data Skin = Skin { skinName :: Maybe Text
                  , skinJoints :: Vector SkinIndex
-                 , skinIBM :: Maybe AccessorIndex
+                 , skinInverseBindMatrices :: Maybe AccessorIndex
                  , skinExtras :: Maybe ExtrasMap
                  }
           deriving (Show, Generic)
