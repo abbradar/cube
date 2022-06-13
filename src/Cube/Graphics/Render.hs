@@ -33,14 +33,22 @@ import Cube.Graphics.Animation
 import Cube.Graphics.ShadersCache
 import Cube.Graphics.Scene.Runtime
 
+import Debug.Trace
+
 data PreparedMesh = PreparedMesh { preparedModelMatrix :: M44F
+                                 , preparedSkinning :: Maybe PreparedSkinning
                                  , preparedDrawCommands :: [DrawCommand]
                                  }
 
 instance Semigroup PreparedMesh where
   a <> b = PreparedMesh { preparedModelMatrix = preparedModelMatrix b
+                        , preparedSkinning = preparedSkinning b
                         , preparedDrawCommands = preparedDrawCommands a ++ preparedDrawCommands b
                         }
+data PreparedSkinning = PreparedSkinning { preparedIBM :: V.Vector M44F
+                                         , preparedJoints :: V.Vector M44F
+                                         }
+                        deriving (Show, Eq)
 
 data PreparedMaterialMeshes = PreparedMaterialMeshes { preparedTextures :: IntMap Texture
                                                      , preparedMaterial :: LoadedMaterial
@@ -131,6 +139,7 @@ prepareSceneGraphModel initialTrs (ModelInstance { instanceModel = SceneGraphMod
 
                   where LoadedMaterial {..} = halfPreparedMaterial
                         preparedMesh = PreparedMesh { preparedModelMatrix = trsMatrix
+                                                    , preparedSkinning = Nothing
                                                     , preparedDrawCommands = halfPreparedCommands
                                                     }
 
