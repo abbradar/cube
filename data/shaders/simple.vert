@@ -52,7 +52,10 @@ uniform mat4 uniBoneMatrices[MAX_BONES_PER_MESH];
 uniform mat4 uniOffsetMatrices[MAX_BONES_PER_MESH];
 in ivec4 attrJoint;
 in vec4 attrWeight;
-vec4 blendPosition = vec4(0.0, 0.0, 0.0, 0.0);
+mat4 blendMatrix = mat4(0.0, 0.0, 0.0, 0.0,
+                        0.0, 0.0, 0.0, 0.0,
+                        0.0, 0.0, 0.0, 0.0,
+                        0.0, 0.0, 0.0, 0.0);
 #ifdef HAS_NORMALS
 #ifdef HAS_TANGENTS
 mat4 blendTangent = vec4(0.0, 0.0, 0.0, 0.0);
@@ -81,26 +84,19 @@ void main()
 #if WEIGHTS_COUNT >=1
     for(int i = 0; i < MAX_BONES; i++) {
         int ind = attrJoint[i];
-        mat4 boneMatrix = attrWeight[ind] * uniBoneMatrices[ind] * uniOffsetMatrices[ind];
-        blendPosition += boneMatrix * pos;
-#ifdef HAS_NORMALS
-        blendNormal += boneMatrix * vec4(attrNormal, 0.0);
-#ifdef HAS_TANGENTS
-        blendTangent += boneMatrix * vec4(attrTangent.xyz, 0.0);
-#endif
-#endif // !HAS_NORMALS
+        blendMatrix += attrWeight[i] * uniBoneMatrices[ind] * uniOffsetMatrices[ind];
     }
 #ifdef HAS_NORMALS
 #ifdef HAS_TANGENTS
-    vec3 normalW = normalize(vec3(blendNormal));
-    vec3 tangentW = normalize(vec3(blendTangent));
+    vec3 normalW = normalize(vec3(blendMatrix * vec4(attrNormal, 0.0)));
+    vec3 tangentW = normalize(vec3(blendMatrix * vec4(attrTangent.xyz, 0.0)));
     vec3 bitangentW = cross(normalW, tangentW) * a_Tangent.w
     vertTBN = mat3(tangentW, bitangentW, normalW;
 #else // !HAS_TANGENTS
     vertNormal = normalize(vec3(blendNormal));
 #endif
 #endif //!HAS_NORMALS
-    gl_Position = uniViewProjectionMatrix * blendPosition;
+    gl_Position = uniViewProjectionMatrix * uniModelMatrix * blendMatrix * pos;
 #else //!HAS_WEIGHTS
 #ifdef HAS_NORMALS
 #ifdef HAS_TANGENTS

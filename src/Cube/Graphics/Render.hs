@@ -34,7 +34,10 @@ import Cube.Graphics.Animation
 import Cube.Graphics.ShadersCache
 import Cube.Graphics.Scene.Runtime
 
+import Data.GlTF.Types as TF (NodeIndex)
+
 import Debug.Trace
+import Data.Maybe
 
 data PreparedMesh = PreparedMesh { preparedModelMatrix :: M44F
                                  , preparedSkinning :: Maybe PreparedSkin
@@ -103,13 +106,23 @@ prepareSceneGraphModel initialTrs (ModelInstance { instanceModel = SceneGraphMod
     case instanceAnimationRef of
       Nothing -> return IM.empty
       Just animRef -> fmap (lanimNodes . astateAnimation) $ liftIO $ readIORef animRef
+  let nodes = loadedNodes sgmModel
+      updateTrsf :: TRSF -> LoadedNodeTree -> [(TF.NodeIndex, TRSF)]
+      updateTrsf parentTrs tree' = (index, trs) : concatMap (updateTrsf trs) (V.toList $ lnodeChildren tree')
+        where
+          index = lnodeIndex tree'
+          node = nodes V.! index
+          animTrs = maybe mempty groupAnimationMorph $ IM.lookup (lnodeIndex tree') animationNodes
+          trs = parentTrs <> lnodeTrs node <> animTrs
 
-  let go :: TRSF -> LoadedNodeTree -> StateT PreparedNodes m ()
-      go parentTrs tree' = do
-        let animTrs = maybe mempty groupAnimationMorph $ IM.lookup (lnodeIndex tree') animationNodes
-            trs = parentTrs <> (lnodeTrs tree') <> animTrs
-            trsMatrix = trsToMatrix trs
-        case (lnodeMesh tree') of
+
+  let go :: V.Vector TRSF -> LoadedNodeTree -> StateT PreparedNodes m ()
+      go updTrs tree' = do
+        let node = nodes V.! lnodeIndex tree'
+       --     animTrs = maybe mempty groupAnimationMorph $ IM.lookup (lnodeIndex tree') animationNodes
+       --     trs = parentTrs <> lnodeTrs node <> animTrs
+       --     trsMatrix = trsToMatrix trs
+        case lnodeMesh node of
           Nothing -> return ()
           Just (LoadedMesh {..}) -> do
             let halfMapPrimitive (LoadedPrimitive {..}) = (pipelineId lprimPipelineMeta, preparedPl)
@@ -140,19 +153,21 @@ prepareSceneGraphModel initialTrs (ModelInstance { instanceModel = SceneGraphMod
 
                   where LoadedMaterial {..} = halfPreparedMaterial
                         prepareSkin lskin = PreparedSkin{ preparedIBM = lskinIBM lskin
-                                                        , preparedJoints = traceShowId $ VS.convert $ (trsToMatrix . hlnodeTrs) <$> lskinJoints lskin
+                                                        , preparedJoints = VS.convert $ trsToMatrix . (updTrs V.!) <$> lskinJoints lskin
                                                         }
-                        preparedMesh = PreparedMesh { preparedModelMatrix = trsMatrix
-                                                    , preparedSkinning = fmap prepareSkin (lnodeSkin tree')
+                        preparedMesh = PreparedMesh { preparedModelMatrix = trsToMatrix $ updTrs V.! lnodeIndex tree'
+                                                    , preparedSkinning = fmap prepareSkin (lnodeSkin node)
                                                     , preparedDrawCommands = halfPreparedCommands
                                                     }
 
             let prepared = IM.map finalizePipeline $ IM.fromListWith (<>) $ map halfMapPrimitive $ V.toList lmeshPrimitives
             modify' $ IM.unionWith (<>) prepared
 
-        mapM_ (go trs) (lnodeChildren tree')
+        mapM_ (go updTrs) (lnodeChildren tree')
 
-  mapM_ (go initialTrs) $ loadedNodes sgmModel
+  let updatedTrsfs = V.map lnodeTrs nodes V.// concatMap (updateTrsf initialTrs) (loadedTrees sgmModel)
+  --let updatedTrsfs = V.map lnodeTrs nodes
+  mapM_ (go updatedTrsfs) $ loadedTrees sgmModel
 
 prepareSceneGraph :: forall m. MonadCube m => SceneGraph -> m PreparedNodes
 prepareSceneGraph sg = flip execStateT IM.empty $ mapSceneWithTRSM_ prepareSceneGraphModel sg
@@ -170,8 +185,18 @@ drawPreparedNodesGeneric setFirstPipeline (Screen {..}) camera = foldM_ drawPipe
                   Nothing -> return ()
                   Just idx -> setUniform value idx $ loadedPipeline preparedPipeline
 
+
+          -- TODO add uniform arrays to Caramia
+          let setPipelineUniformArray :: (MonadIO m, Uniformable a, VS.Storable a) => (PipelineMeta -> Maybe UniformLocation) -> VS.Vector a -> m ()
+              setPipelineUniformArray accessor values =
+                case accessor preparedMeta of
+                  Nothing -> return ()
+                  Just idx -> VS.iforM_ values $ \x value -> setUniform value (idx+fromIntegral x) $ loadedPipeline preparedPipeline
+
+
           setPipelineUniform pipelineViewProjectionMatrix $ transpose viewProjectionMatrix
           setPipelineUniform pipelineCamera $ cameraPosition camera
+
 
           forM_ (HM.toList $ pipelineTextures preparedMeta) $ \(texType, idx) ->
             setUniform (fromEnum texType) idx $ loadedPipeline preparedPipeline
@@ -184,6 +209,10 @@ drawPreparedNodesGeneric setFirstPipeline (Screen {..}) camera = foldM_ drawPipe
             setFragmentPassTests preparedFragmentPassTests
 
             forM_ preparedMeshes $ \PreparedMesh {..} -> do
+              let joints = preparedJoints $ fromMaybe (error "prepared joint matrices are empty") preparedSkinning
+              setPipelineUniformArray pipelineBoneMatrices $ VS.map transpose joints
+              let offsets = preparedIBM $ fromMaybe (error "prepared offset matrices are empty") preparedSkinning
+              setPipelineUniformArray pipelineOffsetMatrices $ VS.map transpose offsets
               setPipelineUniform pipelineModelMatrix $ transpose preparedModelMatrix
               setPipelineUniform pipelineNormalMatrix $ transpose $ inv44 (viewMatrix !*! preparedModelMatrix)
               mapM_ drawR preparedDrawCommands
