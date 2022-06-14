@@ -107,16 +107,16 @@ prepareSceneGraphModel initialTrs (ModelInstance { instanceModel = SceneGraphMod
       Nothing -> return IM.empty
       Just animRef -> fmap (lanimNodes . astateAnimation) $ liftIO $ readIORef animRef
   let nodes = loadedNodes sgmModel
-      updateTrsf :: TRSF -> LoadedNodeTree -> [(TF.NodeIndex, TRSF)]
+      updateTrsf :: M44F -> LoadedNodeTree -> [(TF.NodeIndex, M44F)]
       updateTrsf parentTrs tree' = (index, trs) : concatMap (updateTrsf trs) (V.toList $ lnodeChildren tree')
         where
           index = lnodeIndex tree'
           node = nodes V.! index
-          animTrs = maybe mempty groupAnimationMorph $ IM.lookup (lnodeIndex tree') animationNodes
-          trs = parentTrs <> lnodeTrs node <> animTrs
+          animTrs = trsToMatrix $ maybe mempty groupAnimationMorph $ IM.lookup (lnodeIndex tree') animationNodes
+          trs = parentTrs !*! lnodeTrs node !*! animTrs
 
 
-  let go :: V.Vector TRSF -> LoadedNodeTree -> StateT PreparedNodes m ()
+  let go :: V.Vector M44F -> LoadedNodeTree -> StateT PreparedNodes m ()
       go updTrs tree' = do
         let node = nodes V.! lnodeIndex tree'
        --     animTrs = maybe mempty groupAnimationMorph $ IM.lookup (lnodeIndex tree') animationNodes
@@ -153,9 +153,9 @@ prepareSceneGraphModel initialTrs (ModelInstance { instanceModel = SceneGraphMod
 
                   where LoadedMaterial {..} = halfPreparedMaterial
                         prepareSkin lskin = PreparedSkin{ preparedIBM = lskinIBM lskin
-                                                        , preparedJoints = VS.convert $ trsToMatrix . (updTrs V.!) <$> lskinJoints lskin
+                                                        , preparedJoints = VS.convert $ (updTrs V.!) <$> lskinJoints lskin
                                                         }
-                        preparedMesh = PreparedMesh { preparedModelMatrix = trsToMatrix $ updTrs V.! lnodeIndex tree'
+                        preparedMesh = PreparedMesh { preparedModelMatrix = updTrs V.! lnodeIndex tree'
                                                     , preparedSkinning = fmap prepareSkin (lnodeSkin node)
                                                     , preparedDrawCommands = halfPreparedCommands
                                                     }
@@ -165,7 +165,7 @@ prepareSceneGraphModel initialTrs (ModelInstance { instanceModel = SceneGraphMod
 
         mapM_ (go updTrs) (lnodeChildren tree')
 
-  let updatedTrsfs = V.map lnodeTrs nodes V.// concatMap (updateTrsf initialTrs) (loadedTrees sgmModel)
+  let updatedTrsfs = V.map lnodeTrs nodes V.// concatMap (updateTrsf $ trsToMatrix initialTrs) (loadedTrees sgmModel)
   --let updatedTrsfs = V.map lnodeTrs nodes
   mapM_ (go updatedTrsfs) $ loadedTrees sgmModel
 

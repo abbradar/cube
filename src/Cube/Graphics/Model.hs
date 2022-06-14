@@ -85,7 +85,7 @@ data LoadedNodeTree = LoadedNodeTree { lnodeIndex :: TF.NodeIndex
                                      }
                       deriving (Show, Eq)
 
-data LoadedNode = LoadedNode { lnodeTrs :: TRSF
+data LoadedNode = LoadedNode { lnodeTrs :: M44F
                              , lnodeMesh :: Maybe LoadedMesh
                              , lnodeSkin :: Maybe LoadedSkin
                              }
@@ -174,11 +174,16 @@ deriving instance ( Show (meta VS.Vector V3)
                   , Show (meta V.Vector VD)
                   ) => Show (LoadedAnimation meta)
 
+--TODO do something with these quaternions
+
+convertQuaternion :: Quaternion a -> Quaternion a
+convertQuaternion (Quaternion x (V3 y z w)) = Quaternion w (V3 x y z)
+
 nodeTransform :: TF.Node -> Either String TRSF
 nodeTransform (TF.Node { nodeMatrix = Just (WM44 mtx), nodeRotation = Nothing, nodeScale = Nothing, nodeTranslation = Nothing }) = return $ matrixToTRS $ transpose mtx
 nodeTransform (TF.Node { nodeMatrix = Nothing, .. }) =
   return $ TRS { trsTranslation = fromMaybe (V3 0 0 0) nodeTranslation
-               , trsRotation = fromMaybe (Quaternion 1 (V3 0 0 0)) nodeRotation
+               , trsRotation = fromMaybe (Quaternion 1 (V3 0 0 0)) $ fmap convertQuaternion nodeRotation
                , trsScale = fromMaybe (V3 1 1 1) nodeScale
                }
 nodeTransform _ = Left "Both transformation matrix and TRS values are specified"
@@ -710,7 +715,7 @@ loadModel' (TF.BoundGlTF {..}) = do
         lnodeTrs <-
           case nodeTransform node of
             Left e -> fail $ "Failed to read node transformation values: " ++ e
-            Right r -> return r
+            Right r -> return $ trsToMatrix r
         let runLoadMesh meshIndex = loadMesh materials mesh
               where mesh = fromMaybe (error $ "no required mesh" ++ show meshIndex) $ meshes V.!? meshIndex
         let runLoadSkin skinIndex = loadSkin $ fromMaybe (error $ "no required skin" ++ show skinIndex) $ skins V.!? skinIndex

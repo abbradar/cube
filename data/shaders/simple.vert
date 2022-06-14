@@ -96,7 +96,7 @@ void main()
     vertNormal = normalize(vec3(blendNormal));
 #endif
 #endif //!HAS_NORMALS
-    gl_Position = uniViewProjectionMatrix * uniModelMatrix * blendMatrix * pos;
+    gl_Position = uniViewProjectionMatrix * blendMatrix * pos;
 #else //!HAS_WEIGHTS
 #ifdef HAS_NORMALS
 #ifdef HAS_TANGENTS
