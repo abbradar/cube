@@ -38,6 +38,6 @@ matrixToTRS mtx = TRS {..}
         trsRotation = matrixToQuaternion rotationMtx
 
 -- FIXME: slow, but too lazy to implement efficiently.
-trsToMatrix :: Floating a => TRS a -> M44 a
+trsToMatrix :: (Conjugate a, RealFloat a) => TRS a -> M44 a
 trsToMatrix (TRS {..}) = transRot & _m33 *~ V3 trsScale trsScale trsScale
   where transRot = mkTransformation trsRotation trsTranslation

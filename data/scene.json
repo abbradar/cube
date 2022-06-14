@@ -1,6 +1,6 @@
 {
   "models": {
-    "cube": "models/friendship_wheel.gltf"
+    "cube": "models/cube_snake.gltf"
   },
   "graph": [
     {
