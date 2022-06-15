@@ -68,8 +68,6 @@ import Cube.Graphics.Types
 import Cube.Graphics.TRS
 import Cube.Graphics.ShadersCache
 
-import Debug.Trace
-
 type AnimationName = Text
 type MaterialId = Int
 
@@ -177,13 +175,14 @@ deriving instance ( Show (meta VS.Vector V3)
 glQuaternion :: V4F -> QF
 glQuaternion (V4 x y z w) = Quaternion w (V3 x y z)
 
-nodeTransform :: TF.Node -> Either String TRSF
-nodeTransform (TF.Node { nodeMatrix = Just (WM44 mtx), nodeRotation = Nothing, nodeScale = Nothing, nodeTranslation = Nothing }) = return $ matrixToTRS $ transpose mtx
+nodeTransform :: TF.Node -> Either String M44F
+nodeTransform (TF.Node { nodeMatrix = Just (WM44 mtx), nodeRotation = Nothing, nodeScale = Nothing, nodeTranslation = Nothing }) = return $ transpose mtx
 nodeTransform (TF.Node { nodeMatrix = Nothing, .. }) =
-  return $ TRS { trsTranslation = fromMaybe (V3 0 0 0) nodeTranslation
+  let trs = TRS { trsTranslation = fromMaybe (V3 0 0 0) nodeTranslation
                 , trsRotation = maybe (Quaternion 1 0) glQuaternion nodeRotation
-               , trsScale = fromMaybe (V3 1 1 1) nodeScale
-               }
+                , trsScale = fromMaybe (V3 1 1 1) nodeScale
+                }
+  in return $ trsToMatrix trs
 nodeTransform _ = Left "Both transformation matrix and TRS values are specified"
 
 imageHasAlpha :: DynamicImage -> Bool
@@ -367,8 +366,8 @@ loadAnimation :: forall m. MonadCube m => TF.Animation -> ModelT m (Maybe (Anima
 loadAnimation (TF.Animation { animationName = Just name, .. }) = do
   nodes <- fmap (IM.fromListWith unionLoadedSamplerGroup . catMaybes) $ mapM loadTarget $ V.toList animationChannels
   let anim = LoadedAnimation { lanimNodes = nodes
-                             , lanimBeginning = fromMaybe 0 $ fmap getMin $ foldMap (foldMapLoadedSamplerGroup (\sampler -> Just $ Min $ lsampBeginning sampler)) nodes
-                             , lanimEnd = fromMaybe 0 $ fmap getMax $ foldMap (foldMapLoadedSamplerGroup (\sampler -> Just $ Max $ lsampEnd sampler)) nodes
+                             , lanimBeginning = maybe 0 getMin $ foldMap (foldMapLoadedSamplerGroup (Just . Min . lsampBeginning)) nodes
+                             , lanimEnd = maybe 0 getMax $ foldMap (foldMapLoadedSamplerGroup (Just . Max . lsampEnd)) nodes
                              }
   return $ Just (name, anim)
 
@@ -713,7 +712,7 @@ loadModel' (TF.BoundGlTF {..}) = do
         lnodeTrs <-
           case nodeTransform node of
             Left e -> fail $ "Failed to read node transformation values: " ++ e
-            Right r -> return $ trsToMatrix r
+            Right r -> return r
         let runLoadMesh meshIndex = loadMesh materials mesh
               where mesh = fromMaybe (error $ "no required mesh" ++ show meshIndex) $ meshes V.!? meshIndex
         let runLoadSkin skinIndex = loadSkin $ fromMaybe (error $ "no required skin" ++ show skinIndex) $ skins V.!? skinIndex

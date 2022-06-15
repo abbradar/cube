@@ -36,7 +36,6 @@ import Cube.Graphics.Scene.Runtime
 
 import Data.GlTF.Types as TF (NodeIndex)
 
-import Debug.Trace
 import Data.Maybe
 
 data PreparedMesh = PreparedMesh { preparedModelMatrix :: M44F
@@ -100,19 +99,19 @@ instance Semigroup HalfPreparedPipeline where
 
 type PreparedNodes = IntMap PreparedPipeline
 
-prepareSceneGraphModel :: forall m. MonadCube m => TRSF -> ModelInstance -> StateT PreparedNodes m ()
+prepareSceneGraphModel :: forall m. MonadCube m => M44F -> ModelInstance -> StateT PreparedNodes m ()
 prepareSceneGraphModel initialTrs (ModelInstance { instanceModel = SceneGraphModel {..}, .. }) = do
   animationNodes <-
     case instanceAnimationRef of
       Nothing -> return IM.empty
       Just animRef -> fmap (lanimNodes . astateAnimation) $ liftIO $ readIORef animRef
   let nodes = loadedNodes sgmModel
-      updateTrsf :: M44F -> LoadedNodeTree -> [(TF.NodeIndex, M44F)]
-      updateTrsf parentTrs tree' = (index, trs) : concatMap (updateTrsf trs) (V.toList $ lnodeChildren tree')
+      updateTrs :: M44F -> LoadedNodeTree -> [(TF.NodeIndex, M44F)]
+      updateTrs parentTrs tree' = (index, trs) : concatMap (updateTrs trs) (V.toList $ lnodeChildren tree')
         where
           index = lnodeIndex tree'
           node = nodes V.! index
-          animTrs = trsToMatrix $ maybe mempty groupAnimationMorph $ IM.lookup (lnodeIndex tree') animationNodes
+          animTrs = maybe identity (trsToMatrix . groupAnimationMorph) $ IM.lookup (lnodeIndex tree') animationNodes
           trs = parentTrs !*! lnodeTrs node !*! animTrs
 
 
@@ -165,9 +164,8 @@ prepareSceneGraphModel initialTrs (ModelInstance { instanceModel = SceneGraphMod
 
         mapM_ (go updTrs) (lnodeChildren tree')
 
-  let updatedTrsfs = V.map lnodeTrs nodes V.// concatMap (updateTrsf $ trsToMatrix initialTrs) (loadedTrees sgmModel)
-  --let updatedTrsfs = V.map lnodeTrs nodes
-  mapM_ (go updatedTrsfs) $ loadedTrees sgmModel
+  let updatedTRSes = V.map lnodeTrs nodes V.// concatMap (updateTrs initialTrs) (loadedTrees sgmModel)
+  mapM_ (go updatedTRSes) $ loadedTrees sgmModel
 
 prepareSceneGraph :: forall m. MonadCube m => SceneGraph -> m PreparedNodes
 prepareSceneGraph sg = flip execStateT IM.empty $ mapSceneWithTRSM_ prepareSceneGraphModel sg

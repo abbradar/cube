@@ -1,7 +1,10 @@
 -- | Translate-Rotation-Scale transformations.
 
+{-# LANGUAGE StrictData #-}
+
 module Cube.Graphics.TRS
   ( TRS(..)
+  , emptyTRS
   , matrixToTRS
   , trsToMatrix
   ) where
@@ -17,14 +20,8 @@ data TRS a = TRS { trsTranslation :: V3 a
                  }
            deriving (Show, Eq)
 
-instance (Conjugate a, RealFloat a) => Semigroup (TRS a) where
-  a <> b = TRS { trsTranslation = (trsTranslation a) + rotate (trsRotation a) (trsTranslation b)
-               , trsRotation = trsRotation a * trsRotation b
-               , trsScale = trsScale a * trsScale b
-               }
-
-instance (Conjugate a, RealFloat a) => Monoid (TRS a) where
-  mempty = TRS { trsTranslation = 0
+emptyTRS :: Num a => TRS a
+emptyTRS = TRS { trsTranslation = 0
                , trsRotation = Quaternion 1 0
                , trsScale = 1
                }
