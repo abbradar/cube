@@ -119,9 +119,6 @@ prepareSceneGraphModel initialTrs (ModelInstance { instanceModel = SceneGraphMod
   let go :: V.Vector M44F -> LoadedNodeTree -> StateT PreparedNodes m ()
       go updTrs tree' = do
         let node = nodes V.! lnodeIndex tree'
-       --     animTrs = maybe mempty groupAnimationMorph $ IM.lookup (lnodeIndex tree') animationNodes
-       --     trs = parentTrs <> lnodeTrs node <> animTrs
-       --     trsMatrix = trsToMatrix trs
         case lnodeMesh node of
           Nothing -> return ()
           Just (LoadedMesh {..}) -> do

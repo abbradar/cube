@@ -25,7 +25,7 @@ instance (Conjugate a, RealFloat a) => Semigroup (TRS a) where
 
 instance (Conjugate a, RealFloat a) => Monoid (TRS a) where
   mempty = TRS { trsTranslation = 0
-               , trsRotation = Quaternion 1 0
+               , trsRotation = Quaternion 0 (V3 0 0 1)
                , trsScale = 1
                }
 
