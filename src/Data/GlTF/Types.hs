@@ -296,7 +296,8 @@ type NodeIndex = Int
 
 data Node = Node { nodeName :: Maybe Text
                  , nodeMesh :: Maybe MeshIndex
-                 , nodeRotation :: Maybe (Quaternion Float)
+                 -- Quaternions are stored as `x y z w`, so we read them as vectors instead.
+                 , nodeRotation :: Maybe (V4 Float)
                  , nodeScale :: Maybe (V3 Float)
                  , nodeTranslation :: Maybe (V3 Float)
                  , nodeMatrix :: Maybe (WM44 Float)

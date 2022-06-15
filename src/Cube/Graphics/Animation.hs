@@ -139,14 +139,9 @@ startAnimation (AnimationOptions {..}) astateSince animation =
                        }
 
 
---TODO do something with these quaternions
-
-convertQuaternion :: Quaternion a -> Quaternion a
-convertQuaternion (Quaternion x (V3 y z w)) = Quaternion w (V3 x y z)
-
 groupAnimationMorph :: LoadedSamplerGroup SamplerState -> TRSF
 groupAnimationMorph (LoadedSamplerGroup {..}) =
   TRS { trsTranslation = maybe 0 (sstateNow . lsampMeta) samplerTranslation
-      , trsRotation = convertQuaternion $ maybe (Quaternion 0 (V3 0 0 1)) (sstateNow . lsampMeta) samplerRotation
+      , trsRotation = maybe (Quaternion 1 0) (sstateNow . lsampMeta) samplerRotation
       , trsScale = maybe 1 (sstateNow . lsampMeta) samplerScale
       }

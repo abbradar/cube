@@ -174,16 +174,14 @@ deriving instance ( Show (meta VS.Vector V3)
                   , Show (meta V.Vector VD)
                   ) => Show (LoadedAnimation meta)
 
---TODO do something with these quaternions
-
-convertQuaternion :: Quaternion a -> Quaternion a
-convertQuaternion (Quaternion x (V3 y z w)) = Quaternion w (V3 x y z)
+glQuaternion :: V4F -> QF
+glQuaternion (V4 x y z w) = Quaternion w (V3 x y z)
 
 nodeTransform :: TF.Node -> Either String TRSF
 nodeTransform (TF.Node { nodeMatrix = Just (WM44 mtx), nodeRotation = Nothing, nodeScale = Nothing, nodeTranslation = Nothing }) = return $ matrixToTRS $ transpose mtx
 nodeTransform (TF.Node { nodeMatrix = Nothing, .. }) =
   return $ TRS { trsTranslation = fromMaybe (V3 0 0 0) nodeTranslation
-               , trsRotation = fromMaybe (Quaternion 1 (V3 0 0 0)) $ fmap convertQuaternion nodeRotation
+                , trsRotation = maybe (Quaternion 1 0) glQuaternion nodeRotation
                , trsScale = fromMaybe (V3 1 1 1) nodeScale
                }
 nodeTransform _ = Left "Both transformation matrix and TRS values are specified"
@@ -400,7 +398,7 @@ loadAnimation (TF.Animation { animationName = Just name, .. }) = do
               TF.TPRotation -> do
                 lsampOutputs <-
                   case rawOutputData of
-                    TF.ARFloat (TF.ARVec4 x) -> return $ VS.map (\(V4 w a b c) -> Quaternion w (V3 a b c)) $ TF.convertedVector x
+                    TF.ARFloat (TF.ARVec4 x) -> return $ VS.map glQuaternion $ TF.convertedVector x
                     _ -> fail "Invalid data type for rotation animation sampler output"
                 let sampler = LoadedSampler {..}
                 return $ emptyLoadedSamplerGroup { samplerRotation = Just sampler }
