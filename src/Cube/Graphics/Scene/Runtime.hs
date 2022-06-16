@@ -50,7 +50,7 @@ data ModelInstance = ModelInstance { instanceModel :: SceneGraphModel
                                    , instanceAnimationRef :: Maybe (IORef AnimationState)
                                    }
 
-data SceneGraphNode = SceneGraphNode { sgnTrs :: TRSF
+data SceneGraphNode = SceneGraphNode { sgnTrs :: M44F
                                      , sgnModel :: Maybe ModelInstance
                                      , sgnChildren :: Vector SceneGraphNode
                                      }
@@ -86,13 +86,14 @@ newSceneGraph (SceneOptions {..}) = do
                       , sgLastModelId = 0
                       }
 
-nodeTransform :: SceneNode -> Either String TRSF
-nodeTransform (SceneNode { sceneNodeMatrix = Just mtx, sceneNodeRotation = Nothing, sceneNodeScale = Nothing, sceneNodeTranslation = Nothing }) = return $ matrixToTRS mtx
+nodeTransform :: SceneNode -> Either String M44F
+nodeTransform (SceneNode { sceneNodeMatrix = Just mtx, sceneNodeRotation = Nothing, sceneNodeScale = Nothing, sceneNodeTranslation = Nothing }) = return mtx
 nodeTransform (SceneNode { sceneNodeMatrix = Nothing, .. }) =
-  return $ TRS { trsTranslation = fromMaybe (V3 0 0 0) sceneNodeTranslation
-               , trsRotation = fromMaybe (Quaternion 1 (V3 0 0 0)) sceneNodeRotation
-               , trsScale = fromMaybe (V3 1 1 1) sceneNodeScale
-               }
+  let trs = TRS { trsTranslation = fromMaybe (V3 0 0 0) sceneNodeTranslation
+                , trsRotation = fromMaybe (Quaternion 1 (V3 0 0 0)) sceneNodeRotation
+                , trsScale = fromMaybe (V3 1 1 1) sceneNodeScale
+                }
+  in return $ trsToMatrix trs
 nodeTransform _ = Left "Both transformation matrix and TRS values are specified"
 
 loadSceneModel :: MonadCube m => ModelName -> SceneT m ModelInstance
@@ -145,10 +146,10 @@ mapSceneM_ f graph = mapM_ go $ V.toList $ sgGraph graph
           mapM_ f sgnModel
           mapM_ go $ V.toList sgnChildren
 
-mapSceneWithTRSM_ :: Monad m => (TRSF -> ModelInstance -> m ()) -> SceneGraph -> m ()
-mapSceneWithTRSM_ f graph = mapM_ (go mempty) $ V.toList $ sgGraph graph
+mapSceneWithTRSM_ :: Monad m => (M44F -> ModelInstance -> m ()) -> SceneGraph -> m ()
+mapSceneWithTRSM_ f graph = mapM_ (go identity) $ V.toList $ sgGraph graph
   where go parentTrs (SceneGraphNode {..}) = do
-          let trs = parentTrs <> sgnTrs
+          let trs = parentTrs !*! sgnTrs
           mapM_ (f trs) sgnModel
           mapM_ (go trs) $ V.toList sgnChildren
 
