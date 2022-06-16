@@ -111,8 +111,10 @@ prepareSceneGraphModel initialTrs (ModelInstance { instanceModel = SceneGraphMod
         where
           index = lnodeIndex tree'
           node = nodes V.! index
-          animTrs = maybe identity (trsToMatrix . groupAnimationMorph) $ IM.lookup (lnodeIndex tree') animationNodes
-          trs = parentTrs !*! lnodeTrs node !*! animTrs
+          animTrs' = trsToMatrix . groupAnimationMorph <$> IM.lookup (lnodeIndex tree') animationNodes
+          trs = case animTrs' of
+                  Nothing -> parentTrs !*! lnodeTrs node
+                  Just animTrs -> parentTrs !*! animTrs
 
 
   let go :: V.Vector M44F -> LoadedNodeTree -> StateT PreparedNodes m ()
