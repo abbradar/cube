@@ -81,17 +81,6 @@ import qualified Data.Text as T
 import qualified Data.Text.Read as T
 import Data.HashMap.Strict (HashMap)
 import Data.Aeson
-    ( defaultOptions,
-      Options(constructorTagModifier, omitNothingFields,
-              fieldLabelModifier),
-      Value,
-      FromJSONKey(fromJSONKey),
-      FromJSON(parseJSON),
-      ToJSON(toEncoding, toJSON),
-      genericParseJSON,
-      withScientific,
-      withText,
-      FromJSONKeyFunction(FromJSONKeyTextParser) )
 import qualified Data.Aeson.Types as JSON
 import Data.Hashable
 import Linear
@@ -277,7 +266,6 @@ data Mesh = Mesh { meshName :: Maybe Text
                  , meshExtras :: Maybe ExtrasMap
                  }
           deriving (Show, Generic)
-
 
 instance FromJSON Mesh where
   parseJSON = genericParseJSON $ gltfOptions "mesh"

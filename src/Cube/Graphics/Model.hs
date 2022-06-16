@@ -19,6 +19,7 @@ module Cube.Graphics.Model
   , LoadedPrimitive(..)
   , MaterialId
   , LoadedMaterial(..)
+  , ArrayUniform(..)
   , PipelineMeta(..)
   , defaultMaterial
   , CubePipelineCache
@@ -522,12 +523,6 @@ loadMaterial textures index (TF.Material {..}) =
 defaultMaterial :: LoadedMaterial
 defaultMaterial = loadMaterial V.empty (-1) TF.defaultMaterial
 
-
-data HalfLoadedSkin = HalfLoadedSkin { hlskinJoints :: Vector Int
-                                     , hlskinIBM :: VS.Vector M44F
-                                     }
-                      deriving (Show, Eq)
-
 loadSkin :: MonadCube m => TF.Skin -> ModelT m (Maybe LoadedSkin)
 loadSkin TF.Skin {..} =
   case skinInverseBindMatrices of
@@ -610,6 +605,7 @@ loadMesh materials (TF.Mesh {..}) = do
   else
     return $ Just $ LoadedMesh {..}
 
+data ArrayUniform = ArrayUniform { arrayIndex :: UniformLocation, arraySize :: Int } deriving (Show, Eq)
 
 data PipelineMeta = PipelineMeta { pipelineAttributes :: HashMap TF.AttributeType AttributeLocation
                                  , pipelineViewProjectionMatrix :: Maybe UniformLocation
@@ -621,8 +617,8 @@ data PipelineMeta = PipelineMeta { pipelineAttributes :: HashMap TF.AttributeTyp
                                  , pipelineAlphaCutoff :: Maybe UniformLocation
                                  , pipelineCamera :: Maybe UniformLocation
                                  , pipelineTextures :: HashMap TextureType UniformLocation
-                                 , pipelineBoneMatrices :: Maybe UniformLocation
-                                 , pipelineOffsetMatrices :: Maybe UniformLocation
+                                 , pipelineBoneMatrices :: Maybe ArrayUniform
+                                 , pipelineOffsetMatrices :: Maybe ArrayUniform
                                  , pipelineId :: PipelineId -- Used for fast indexing
                                  }
                   deriving (Show, Eq)
@@ -657,8 +653,8 @@ getPipelineUniforms loadedUniforms = mapM mapAttribute (HM.elems loadedUniforms)
   where mapAttribute (idx, UniformInfo {..})
           | uniformSize /= 1 =
             case uniformName of
-              "uniBoneMatrices[0]" -> return $ \x -> x { pipelineBoneMatrices = Just idx }
-              "uniOffsetMatrices[0]" -> return $ \x -> x { pipelineOffsetMatrices = Just idx }
+              "uniBoneMatrices[0]" -> return $ \x -> x { pipelineBoneMatrices = Just ArrayUniform{arrayIndex = idx, arraySize = uniformSize} }
+              "uniOffsetMatrices[0]" -> return $ \x -> x { pipelineOffsetMatrices = Just ArrayUniform{arrayIndex = idx, arraySize = uniformSize} }
               _ -> Left [i|Unknown array uniform #{uniformName}|]
           | otherwise =
             case uniformName of

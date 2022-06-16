@@ -184,12 +184,13 @@ drawPreparedNodesGeneric setFirstPipeline (Screen {..}) camera = foldM_ drawPipe
 
 
           -- TODO add uniform arrays to Caramia
-          let setPipelineUniformArray :: (MonadIO m, Uniformable a, VS.Storable a) => (PipelineMeta -> Maybe UniformLocation) -> VS.Vector a -> m ()
+          let setPipelineUniformArray :: (MonadIO m, Uniformable a, VS.Storable a) => (PipelineMeta -> Maybe ArrayUniform) -> VS.Vector a -> m ()
               setPipelineUniformArray accessor values =
                 case accessor preparedMeta of
                   Nothing -> return ()
-                  Just idx -> VS.iforM_ values $ \x value -> setUniform value (idx+fromIntegral x) $ loadedPipeline preparedPipeline
-
+                  Just ArrayUniform{arrayIndex = idx, arraySize = size} ->
+                    if VS.length values <= size then VS.iforM_ values $ \x value -> setUniform value (idx+fromIntegral x) $ loadedPipeline preparedPipeline
+                    else error $ "Uniform length "++show (VS.length values)++"is longer than the maximal supported "++show size
 
           setPipelineUniform pipelineViewProjectionMatrix $ transpose viewProjectionMatrix
           setPipelineUniform pipelineCamera $ cameraPosition camera
