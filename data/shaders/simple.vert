@@ -50,8 +50,8 @@ uniform mat4 uniNormalMatrix;
 #define MAX_BONES_PER_MESH 32
 uniform mat4 uniBoneMatrices[MAX_BONES_PER_MESH];
 uniform mat4 uniOffsetMatrices[MAX_BONES_PER_MESH];
-in ivec4 attrJoint;
-in vec4 attrWeight;
+in ivec4 attrJoint_0;
+in vec4 attrWeight_0;
 mat4 blendMatrix = mat4(0.0, 0.0, 0.0, 0.0,
                         0.0, 0.0, 0.0, 0.0,
                         0.0, 0.0, 0.0, 0.0,
@@ -83,8 +83,8 @@ void main()
 #endif
 #if WEIGHTS_COUNT >=1
     for(int i = 0; i < MAX_BONES; i++) {
-        int ind = attrJoint[i];
-        blendMatrix += attrWeight[i] * uniBoneMatrices[ind] * uniOffsetMatrices[ind];
+        int ind = attrJoint_0[i];
+        blendMatrix += attrWeight_0[i] * uniBoneMatrices[ind] * uniOffsetMatrices[ind];
     }
 #ifdef HAS_NORMALS
 #ifdef HAS_TANGENTS
