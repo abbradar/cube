@@ -82,7 +82,7 @@ data LoadedModel = LoadedModel { loadedTrees :: Vector LoadedNodeTree
 data LoadedNodeTree = LoadedNodeTree { lnodeIndex :: TF.NodeIndex
                                      , lnodeChildren :: Vector LoadedNodeTree
                                      }
-                      deriving (Show, Eq)
+                    deriving (Show, Eq)
 
 data LoadedNode = LoadedNode { lnodeTrs :: M44F
                              , lnodeMesh :: Maybe LoadedMesh
@@ -95,9 +95,7 @@ newtype LoadedMesh = LoadedMesh { lmeshPrimitives :: Vector LoadedPrimitive
 data LoadedSkin = LoadedSkin { lskinJoints :: Vector TF.NodeIndex
                              , lskinIBM :: VS.Vector M44F
                              }
-               --   deriving (Show, Eq)
-instance Show LoadedSkin where
-  show LoadedSkin{..} = show (length lskinJoints) ++ " " ++ show lskinIBM
+                deriving (Show, Eq)
 
 data TextureType = BaseColorTexture
                  deriving (Show, Eq, Ord, Bounded, Enum, Generic, Typeable, Hashable)
