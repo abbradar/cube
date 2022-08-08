@@ -533,7 +533,7 @@ loadSkin TF.Skin {..} =
           _ -> fail "invalid inverse bind matrices"
       let lskinJoints = skinJoints
       let lskinIBM = TF.convertedVector lskinIBM'
-      return $ Just LoadedSkin{..}
+      return $ Just LoadedSkin {..}
 
 loadPrimitive :: MonadCube m => Vector LoadedMaterial -> TF.Primitive -> ModelT m (Maybe LoadedPrimitive)
 loadPrimitive materials primitive@(TF.Primitive {..})
