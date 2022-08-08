@@ -603,7 +603,10 @@ loadMesh materials (TF.Mesh {..}) = do
   else
     return $ Just $ LoadedMesh {..}
 
-data ArrayUniform = ArrayUniform { arrayIndex :: UniformLocation, arraySize :: Int } deriving (Show, Eq)
+data ArrayUniform = ArrayUniform { arrayIndex :: UniformLocation
+                                 , arraySize :: Int
+                                 }
+                  deriving (Show, Eq)
 
 data PipelineMeta = PipelineMeta { pipelineAttributes :: HashMap TF.AttributeType AttributeLocation
                                  , pipelineViewProjectionMatrix :: Maybe UniformLocation
