@@ -654,7 +654,7 @@ getPipelineUniforms loadedUniforms = mapM mapAttribute (HM.elems loadedUniforms)
   where mapAttribute (idx, UniformInfo {..})
           | uniformSize /= 1 =
             case uniformName of
-              "uniBoneMatrices[0]" -> return $ \x -> x { pipelineBoneMatrices = Just ArrayUniform{arrayIndex = idx, arraySize = uniformSize} }
+              "uniBoneMatrices[0]" -> return $ \x -> x { pipelineBoneMatrices = Just ArrayUniform { arrayIndex = idx, arraySize = uniformSize } }
               "uniOffsetMatrices[0]" -> return $ \x -> x { pipelineOffsetMatrices = Just ArrayUniform{arrayIndex = idx, arraySize = uniformSize} }
               _ -> Left [i|Unknown array uniform #{uniformName}|]
           | otherwise =
