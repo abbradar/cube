@@ -718,7 +718,7 @@ loadModel' (TF.BoundGlTF {..}) = do
         return LoadedNode{..}
 
       loadNodeTree :: TF.NodeTree -> LoadedNodeTree
-      loadNodeTree TF.NodeTree{..} = LoadedNodeTree{ lnodeIndex = nodeTreeIndex, lnodeChildren = fmap loadNodeTree nodeTreeChildren }
+      loadNodeTree TF.NodeTree {..} = LoadedNodeTree { lnodeIndex = nodeTreeIndex, lnodeChildren = fmap loadNodeTree nodeTreeChildren }
 
   (treeNodes, nodes') <-
     case TF.gltfNodeTree $ fromMaybe V.empty $ TF.gltfNodes boundGltf of

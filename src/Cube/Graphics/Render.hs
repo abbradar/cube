@@ -51,7 +51,7 @@ instance Semigroup PreparedMesh where
 data PreparedSkin = PreparedSkin { preparedIBM :: VS.Vector M44F
                                  , preparedJoints :: VS.Vector M44F
                                  }
-                        deriving (Show, Eq)
+                    deriving (Show, Eq)
 
 data PreparedMaterialMeshes = PreparedMaterialMeshes { preparedTextures :: IntMap Texture
                                                      , preparedMaterial :: LoadedMaterial
