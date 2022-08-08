@@ -150,7 +150,7 @@ prepareSceneGraphModel initialTrs (ModelInstance { instanceModel = SceneGraphMod
                                          }
 
                   where LoadedMaterial {..} = halfPreparedMaterial
-                        prepareSkin lskin = PreparedSkin{ preparedIBM = lskinIBM lskin
+                        prepareSkin lskin = PreparedSkin { preparedIBM = lskinIBM lskin
                                                         , preparedJoints = VS.convert $ (updTrs V.!) <$> lskinJoints lskin
                                                         }
                         preparedMesh = PreparedMesh { preparedModelMatrix = updTrs V.! lnodeIndex tree'
