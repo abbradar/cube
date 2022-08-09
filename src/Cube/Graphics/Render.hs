@@ -13,6 +13,7 @@ module Cube.Graphics.Render
   ) where
 
 import Data.IORef
+import Data.Maybe
 import Control.Monad
 import Data.IntMap.Strict (IntMap)
 import qualified Data.IntMap.Strict as IM
@@ -33,10 +34,8 @@ import Cube.Graphics.Camera
 import Cube.Graphics.Animation
 import Cube.Graphics.ShadersCache
 import Cube.Graphics.Scene.Runtime
-
 import Data.GlTF.Types as TF (NodeIndex)
 
-import Data.Maybe
 
 data PreparedMesh = PreparedMesh { preparedModelMatrix :: M44F
                                  , preparedSkinning :: Maybe PreparedSkin
@@ -184,13 +183,13 @@ drawPreparedNodesGeneric setFirstPipeline (Screen {..}) camera = foldM_ drawPipe
 
 
           -- TODO add uniform arrays to Caramia
-          let setPipelineUniformArray :: (MonadIO m, Uniformable a, VS.Storable a) => (PipelineMeta -> Maybe ArrayUniform) -> VS.Vector a -> m ()
+          let setPipelineUniformArray :: (MonadFail m, MonadIO m, Uniformable a, VS.Storable a) => (PipelineMeta -> Maybe ArrayUniform) -> VS.Vector a -> m ()
               setPipelineUniformArray accessor values =
                 case accessor preparedMeta of
                   Nothing -> return ()
                   Just ArrayUniform{arrayIndex = idx, arraySize = size} ->
                     if VS.length values <= size then VS.iforM_ values $ \x value -> setUniform value (idx+fromIntegral x) $ loadedPipeline preparedPipeline
-                    else error $ "Uniform length "++show (VS.length values)++"is longer than the maximal supported "++show size
+                    else fail $ "Uniform length: " ++ show (VS.length values) ++ "is longer than the maximal supported: " ++ show size
 
           setPipelineUniform pipelineViewProjectionMatrix $ transpose viewProjectionMatrix
           setPipelineUniform pipelineCamera $ cameraPosition camera
@@ -207,9 +206,9 @@ drawPreparedNodesGeneric setFirstPipeline (Screen {..}) camera = foldM_ drawPipe
             setFragmentPassTests preparedFragmentPassTests
 
             forM_ preparedMeshes $ \PreparedMesh {..} -> do
-              let joints = preparedJoints $ fromMaybe (error "prepared joint matrices are empty") preparedSkinning
+              joints <- preparedJoints <$> maybe (fail "prepared joint matrices are empty") return preparedSkinning
               setPipelineUniformArray pipelineBoneMatrices $ VS.map transpose joints
-              let offsets = preparedIBM $ fromMaybe (error "prepared offset matrices are empty") preparedSkinning
+              offsets <- preparedIBM <$> maybe (fail "prepared offset matrices are empty") return preparedSkinning
               setPipelineUniformArray pipelineOffsetMatrices $ VS.map transpose offsets
               setPipelineUniform pipelineModelMatrix $ transpose preparedModelMatrix
               setPipelineUniform pipelineNormalMatrix $ transpose $ inv44 (viewMatrix !*! preparedModelMatrix)

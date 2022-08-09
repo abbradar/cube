@@ -26,7 +26,7 @@ module Cube.Graphics.Model
   , loadModel
   ) where
 
-import Data.Semigroup
+import Data.Semigroup ( Max(Max, getMax), Min(Min, getMin) )
 import Data.Typeable
 import Data.Functor
 import Data.Maybe
@@ -82,7 +82,7 @@ data LoadedModel = LoadedModel { loadedTrees :: Vector LoadedNodeTree
 data LoadedNodeTree = LoadedNodeTree { lnodeIndex :: TF.NodeIndex
                                      , lnodeChildren :: Vector LoadedNodeTree
                                      }
-                    deriving (Show, Eq)
+                      deriving (Show, Eq)
 
 data LoadedNode = LoadedNode { lnodeTrs :: M44F
                              , lnodeMesh :: Maybe LoadedMesh
@@ -95,7 +95,9 @@ newtype LoadedMesh = LoadedMesh { lmeshPrimitives :: Vector LoadedPrimitive
 data LoadedSkin = LoadedSkin { lskinJoints :: Vector TF.NodeIndex
                              , lskinIBM :: VS.Vector M44F
                              }
-                deriving (Show, Eq)
+               --   deriving (Show, Eq)
+instance Show LoadedSkin where
+  show LoadedSkin{..} = show (length lskinJoints) ++ " " ++ show lskinIBM
 
 data TextureType = BaseColorTexture
                  deriving (Show, Eq, Ord, Bounded, Enum, Generic, Typeable, Hashable)
@@ -707,11 +709,12 @@ loadModel' (TF.BoundGlTF {..}) = do
           case nodeTransform node of
             Left e -> fail $ "Failed to read node transformation values: " ++ e
             Right r -> return r
-        let runLoadMesh meshIndex = loadMesh materials mesh
-              where mesh = fromMaybe (error $ "no required mesh" ++ show meshIndex) $ meshes V.!? meshIndex
-        let runLoadSkin skinIndex = loadSkin $ fromMaybe (error $ "no required skin" ++ show skinIndex) $ skins V.!? skinIndex
-        lnodeMesh <- join <$> mapM runLoadMesh (TF.nodeMesh node)
-        lnodeSkin <- join <$> mapM runLoadSkin (TF.nodeSkin node)
+        lnodeMesh <- case TF.nodeMesh node of
+          Nothing -> return Nothing
+          Just meshIndex -> maybe (fail $ "no required mesh: " ++ show meshIndex) (loadMesh materials) (meshes V.!? meshIndex)
+        lnodeSkin <- case TF.nodeSkin node of
+          Nothing -> return Nothing
+          Just skinIndex -> maybe (fail $ "no required mesh: " ++ show skinIndex) loadSkin (skins V.!? skinIndex)
         return LoadedNode{..}
 
       loadNodeTree :: TF.NodeTree -> LoadedNodeTree
