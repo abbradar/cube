@@ -50,7 +50,7 @@ instance Semigroup PreparedMesh where
 data PreparedSkin = PreparedSkin { preparedIBM :: VS.Vector M44F
                                  , preparedJoints :: VS.Vector M44F
                                  }
-                        deriving (Show, Eq)
+                    deriving (Show, Eq)
 
 data PreparedMaterialMeshes = PreparedMaterialMeshes { preparedTextures :: IntMap Texture
                                                      , preparedMaterial :: LoadedMaterial
@@ -149,9 +149,9 @@ prepareSceneGraphModel initialTrs (ModelInstance { instanceModel = SceneGraphMod
                                          }
 
                   where LoadedMaterial {..} = halfPreparedMaterial
-                        prepareSkin lskin = PreparedSkin{ preparedIBM = lskinIBM lskin
-                                                        , preparedJoints = VS.convert $ (updTrs V.!) <$> lskinJoints lskin
-                                                        }
+                        prepareSkin lskin = PreparedSkin { preparedIBM = lskinIBM lskin
+                                                         , preparedJoints = VS.convert $ (updTrs V.!) <$> lskinJoints lskin
+                                                         }
                         preparedMesh = PreparedMesh { preparedModelMatrix = updTrs V.! lnodeIndex tree'
                                                     , preparedSkinning = fmap prepareSkin (lnodeSkin node)
                                                     , preparedDrawCommands = halfPreparedCommands

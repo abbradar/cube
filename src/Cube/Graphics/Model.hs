@@ -535,7 +535,7 @@ loadSkin TF.Skin {..} =
           _ -> fail "invalid inverse bind matrices"
       let lskinJoints = skinJoints
       let lskinIBM = TF.convertedVector lskinIBM'
-      return $ Just LoadedSkin{..}
+      return $ Just LoadedSkin {..}
 
 loadPrimitive :: MonadCube m => Vector LoadedMaterial -> TF.Primitive -> ModelT m (Maybe LoadedPrimitive)
 loadPrimitive materials primitive@(TF.Primitive {..})
@@ -605,7 +605,10 @@ loadMesh materials (TF.Mesh {..}) = do
   else
     return $ Just $ LoadedMesh {..}
 
-data ArrayUniform = ArrayUniform { arrayIndex :: UniformLocation, arraySize :: Int } deriving (Show, Eq)
+data ArrayUniform = ArrayUniform { arrayIndex :: UniformLocation
+                                 , arraySize :: Int
+                                 }
+                  deriving (Show, Eq)
 
 data PipelineMeta = PipelineMeta { pipelineAttributes :: HashMap TF.AttributeType AttributeLocation
                                  , pipelineViewProjectionMatrix :: Maybe UniformLocation
@@ -653,8 +656,8 @@ getPipelineUniforms loadedUniforms = mapM mapAttribute (HM.elems loadedUniforms)
   where mapAttribute (idx, UniformInfo {..})
           | uniformSize /= 1 =
             case uniformName of
-              "uniBoneMatrices[0]" -> return $ \x -> x { pipelineBoneMatrices = Just ArrayUniform{arrayIndex = idx, arraySize = uniformSize} }
-              "uniOffsetMatrices[0]" -> return $ \x -> x { pipelineOffsetMatrices = Just ArrayUniform{arrayIndex = idx, arraySize = uniformSize} }
+              "uniBoneMatrices[0]" -> return $ \x -> x { pipelineBoneMatrices = Just ArrayUniform { arrayIndex = idx, arraySize = uniformSize } }
+              "uniOffsetMatrices[0]" -> return $ \x -> x { pipelineOffsetMatrices = Just ArrayUniform { arrayIndex = idx, arraySize = uniformSize } }
               _ -> Left [i|Unknown array uniform #{uniformName}|]
           | otherwise =
             case uniformName of
@@ -718,7 +721,7 @@ loadModel' (TF.BoundGlTF {..}) = do
         return LoadedNode{..}
 
       loadNodeTree :: TF.NodeTree -> LoadedNodeTree
-      loadNodeTree TF.NodeTree{..} = LoadedNodeTree{ lnodeIndex = nodeTreeIndex, lnodeChildren = fmap loadNodeTree nodeTreeChildren }
+      loadNodeTree TF.NodeTree {..} = LoadedNodeTree { lnodeIndex = nodeTreeIndex, lnodeChildren = fmap loadNodeTree nodeTreeChildren }
 
   (treeNodes, nodes') <-
     case TF.gltfNodeTree $ fromMaybe V.empty $ TF.gltfNodes boundGltf of
