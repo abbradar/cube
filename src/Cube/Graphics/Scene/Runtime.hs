@@ -39,6 +39,8 @@ import Cube.Graphics.Model
 import Data.WeakCache (WeakCache)
 import qualified Data.WeakCache as WeakCache
 
+--import Debug.Trace
+
 type ModelId = Int
 
 data SceneGraphModel = SceneGraphModel { sgmModel :: LoadedModel

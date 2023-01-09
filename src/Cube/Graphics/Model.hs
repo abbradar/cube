@@ -69,6 +69,8 @@ import Cube.Graphics.Types
 import Cube.Graphics.TRS
 import Cube.Graphics.ShadersCache
 
+--import Debug.Trace
+
 type AnimationName = Text
 type MaterialId = Int
 
@@ -88,9 +90,13 @@ data LoadedNode = LoadedNode { lnodeTrs :: M44F
                              , lnodeMesh :: Maybe LoadedMesh
                              , lnodeSkin :: Maybe LoadedSkin
                              }
+instance Show LoadedNode where
+  show LoadedNode{..} = "lnodeTrs: " ++ show lnodeTrs ++ " lnodeMesh: " ++ show lnodeMesh ++ " lnodeSkin: " ++ show lnodeSkin
 
 newtype LoadedMesh = LoadedMesh { lmeshPrimitives :: Vector LoadedPrimitive
                                 }
+instance Show LoadedMesh where
+  show LoadedMesh{..} = "primitives: " ++ show (length lmeshPrimitives)
 
 data LoadedSkin = LoadedSkin { lskinJoints :: Vector TF.NodeIndex
                              , lskinIBM :: VS.Vector M44F
@@ -119,6 +125,10 @@ data LoadedMaterial = LoadedMaterial { lmatTextures :: HashMap TextureType (TF.A
 
 data EmptySamplerState container component = EmptySamplerState
                                            deriving (Show, Eq, Ord)
+
+-- lsampInputs are animation node times in between of lsampBeginning and lsampEnd
+-- lsampOutputs are the data at each node. Container is a vector type (VS.Vector, V.Vector, ...) and component is the data type (V3, Quaternion,...)
+-- lsampMeta is any additional data one might store in the animation
 
 data LoadedSampler container component meta = LoadedSampler { lsampInputs :: VS.Vector Float
                                                             , lsampBeginning :: Float

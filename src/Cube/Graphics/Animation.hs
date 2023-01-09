@@ -27,6 +27,10 @@ import Cube.Graphics.Types
 import Cube.Graphics.TRS
 import Cube.Time
 
+data SamplerState container component = SamplerState { sstateNow :: component Float
+                                                     , sstateIndex :: Int
+                                                     }
+
 type UpdatableAnimation container component = (Num (component Float), VG.Vector container (component Float), UnboxFunctor component)
 
 class UpdateAnimation f where
@@ -54,9 +58,6 @@ data AnimationState = AnimationState { astateAnimation :: LoadedAnimation Sample
                                      , astateLoop :: Bool
                                      }
 
-data SamplerState container component = SamplerState { sstateNow :: component Float
-                                                     , sstateIndex :: Int
-                                                     }
 
 deriving instance Show (component Float) => Show (SamplerState accessor component)
 

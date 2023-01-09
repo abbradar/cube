@@ -36,6 +36,7 @@ import Cube.Graphics.ShadersCache
 import Cube.Graphics.Scene.Runtime
 import Data.GlTF.Types as TF (NodeIndex)
 
+--import Debug.Trace
 
 data PreparedMesh = PreparedMesh { preparedModelMatrix :: M44F
                                  , preparedSkinning :: Maybe PreparedSkin
@@ -206,10 +207,11 @@ drawPreparedNodesGeneric setFirstPipeline (Screen {..}) camera = foldM_ drawPipe
             setFragmentPassTests preparedFragmentPassTests
 
             forM_ preparedMeshes $ \PreparedMesh {..} -> do
-              joints <- preparedJoints <$> maybe (fail "prepared joint matrices are empty") return preparedSkinning
-              setPipelineUniformArray pipelineBoneMatrices $ VS.map transpose joints
-              offsets <- preparedIBM <$> maybe (fail "prepared offset matrices are empty") return preparedSkinning
-              setPipelineUniformArray pipelineOffsetMatrices $ VS.map transpose offsets
+              forM_ preparedSkinning $ \skinning -> do
+                let joints = preparedJoints skinning
+                    offsets = preparedIBM skinning
+                setPipelineUniformArray pipelineBoneMatrices $ VS.map transpose joints
+                setPipelineUniformArray pipelineOffsetMatrices $ VS.map transpose offsets
               setPipelineUniform pipelineModelMatrix $ transpose preparedModelMatrix
               setPipelineUniform pipelineNormalMatrix $ transpose $ inv44 (viewMatrix !*! preparedModelMatrix)
               mapM_ drawR preparedDrawCommands
