@@ -9,6 +9,7 @@ import Control.Monad.IO.Class
 import Control.Monad.Logger
 import Graphics.Caramia as Caramia
 import Data.Functor.Misc
+import qualified Data.Vector as V
 import System.FilePath
 import Reflex
 import Reflex.Host.Class
@@ -28,6 +29,8 @@ import Cube.Graphics.Scene.Runtime
 import Cube.Input.Events
 import Cube.Input.Keyboard
 import Cube.Input.Mouse
+
+import Debug.Trace
 
 data GameSettings = GameSettings { gameVertexShader :: FilePath
                                  , gameFragmentShader :: FilePath
@@ -173,11 +176,11 @@ gameNetwork (GameWindow { gameSettings = GameSettings {..}, ..}) (GameInitialSta
         let ratio = fromIntegral $ min sx sy
         return $ Just $ fmap fromIntegral move ^/ ratio
   let normalizedMouseMoveStep = push normalizedShift mouseMoveStep
-  
+
   let updateCamera (mmove, mrotation) camera@(Camera {..}) = do
         let camera' =
               case mmove of
-                Nothing -> camera
+                Nothing -> traceShow (sgnTrs $ sgGraph initialScene V.! 0) camera
                 Just step -> camera { cameraPosition = cameraPosition + 0.1 *^ (rotate cameraRotation step) }
             camera'' =
               case mrotation of
@@ -189,7 +192,8 @@ gameNetwork (GameWindow { gameSettings = GameSettings {..}, ..}) (GameInitialSta
       mouseCameraStep = fmap ((Nothing, ) . Just) normalizedMouseMoveStep
       cameraStep = mergeWith (\(moveA, rotateA) (moveB, rotateB) -> (moveA <|> moveB, rotateA <|> rotateB)) [kbdCameraStep, mouseCameraStep]
 
-  -- playerCamera <- foldDynM updateCamera mempty cameraStep
+
+  --playerTransform <- foldDynM updateTransform (sgnTrs $ sgGraph initialScene V.! 0) cameraStep
   playerCamera <- foldDynM updateCamera (Camera { cameraPosition = initialPosition, cameraRotation = Quaternion 1 0}) cameraStep
 
   let screen = fmap (\(V2 width height) -> perspectiveScreen gameFovRadians (fromIntegral width / fromIntegral height) gameNearPlane gameFarPlane) windowSize

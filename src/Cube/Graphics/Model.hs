@@ -24,6 +24,7 @@ module Cube.Graphics.Model
   , defaultMaterial
   , CubePipelineCache
   , loadModel
+  , loadMapModel
   ) where
 
 import Data.Semigroup ( Max(Max, getMax), Min(Min, getMin) )
@@ -44,10 +45,12 @@ import qualified Data.Vector.Generic as VG
 import qualified Data.Attoparsec.ByteString.Char8 as Atto
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as B
+import qualified Data.ByteString as BS
 import Data.HashMap.Strict (HashMap)
 import qualified Data.HashMap.Strict as HM
 import Data.IntMap.Strict (IntMap)
 import qualified Data.IntMap.Strict as IM
+import Data.Int ( Int16  )
 import qualified Data.Set as S
 import Control.Monad.State.Strict
 import Control.Monad.Reader
@@ -55,6 +58,8 @@ import Linear hiding (normalize)
 import Graphics.Caramia
 import Codec.Picture
 import Graphics.Caramia.OpenGLResource
+
+import Foreign.Storable (sizeOf)
 
 import Linear.Matrix.Wrapper
 import Linear.VD (VD)
@@ -68,7 +73,7 @@ import Cube.Types
 import Cube.Graphics.Types
 import Cube.Graphics.TRS
 import Cube.Graphics.ShadersCache
-
+import Cube.Map
 --import Debug.Trace
 
 type AnimationName = Text
@@ -607,6 +612,86 @@ loadPrimitive materials primitive@(TF.Primitive {..})
                                     , lprimDrawCommand = primDrawCommand
                                     }
 
+
+
+loadChunk :: forall m. MonadCube m => Vector LoadedMaterial -> Chunk -> ModelT m LoadedPrimitive
+loadChunk materials chunk = do
+  let (vbuff, ibuff) = chunkBuffers chunk
+      size = BS.length ibuff `div` (6*sizeOf (fromIntegral 0 :: Int16))
+      material = defaultMaterial
+      getTexCoord (attrIdx, _tex)
+        | attrIdx >= 1 = Nothing
+        | otherwise = Just attrIdx
+      shaderKey = ShaderKey { shaderHasNormals = True
+                            , shaderHasTangents = False
+                            , shaderHasAlphaCutoff = False
+                            , shaderTexCoordsCount = 1
+                            , shaderColorsCount = 0
+                            , shaderJointsCount = 0
+                            , shaderWeightsCount = 0
+                            , shaderColorComponents = V.fromList []
+                            , shaderTextures = HM.mapMaybe getTexCoord (lmatTextures material)
+                            }
+      chunkAttributes = HM.fromList [(TF.ATPosition,0), (TF.ATNormal,1), (TF.ATTexCoord 0,2)]
+
+  (meta, pl) <- getPipeline shaderKey
+
+  chunkVAO <- newVAO
+  -- TODO: rewrite
+  let sourcingPos = defaultSourcing { offset = 0
+                                    , components = 3
+                                    , stride = 0
+                                    , normalize = False
+                                    , sourceType = convertAccessorComponentType TF.CTFloat
+                                    , attributeIndex = 0
+                                    , integerMapping = False
+                                    }
+      -- TODO: replace 4 with sizeOf Float
+      sourcingNorm = defaultSourcing { offset = 6*size*(4)*3
+                                     , components = 3
+                                     , stride = 0
+                                     , normalize = False
+                                     , sourceType = convertAccessorComponentType TF.CTFloat
+                                     , attributeIndex = 1
+                                     , integerMapping = False
+                                     }
+      sourcingUV = defaultSourcing { offset = 12*size*(4)*3
+                                   , components = 2
+                                   , stride = 0
+                                   , normalize = False
+                                   , sourceType = convertAccessorComponentType TF.CTFloat
+                                   , attributeIndex = 0
+                                   , integerMapping = False
+                                   }
+  vertexBuffer <- newBufferFromBS vbuff $ \x -> x { accessHints = (Static, Draw)
+                                                  , accessFlags = ReadAccess
+                                                  }
+  sourceVertexData vertexBuffer sourcingPos chunkVAO
+  sourceVertexData vertexBuffer sourcingNorm chunkVAO
+  sourceVertexData vertexBuffer sourcingUV chunkVAO
+  -- index buffer
+  indexBuffer <- newBufferFromBS ibuff $ \x -> x { accessHints = (Static, Draw)
+                                                 , accessFlags = ReadAccess
+                                                 }
+  let src = PrimitivesWithIndices { indexBuffer = indexBuffer
+                                  , indexOffset = 0
+                                  , indexType = IWord16
+                                  }
+  let primDrawCommand = drawCommand { primitiveType = convertPrimitiveMode TF.PMTriangles
+                                    , primitivesVAO = chunkVAO
+                                    , numIndices = 6*size
+                                    , sourceData = src
+                                    }
+
+
+  return $ LoadedPrimitive { lprimPipelineMeta = meta
+                                , lprimPipeline = pl
+                                , lprimMaterial = material
+                                , lprimDrawCommand = primDrawCommand
+                                }
+
+
+
 loadMesh :: MonadCube m => Vector LoadedMaterial -> TF.Mesh -> ModelT m (Maybe LoadedMesh)
 loadMesh materials (TF.Mesh {..}) = do
   lmeshPrimitives <- V.fromList <$> catMaybes <$> mapM (loadPrimitive materials) (V.toList meshPrimitives)
@@ -759,4 +844,44 @@ loadModel plCache bound = do
   return LoadedModel { loadedTrees = trees
                      , loadedNodes = nodes
                      , loadedAnimations = animations
+                     }
+
+loadMapModel' :: forall m. MonadCube m => Map -> TF.BoundGlTF -> ModelT m (Vector LoadedNodeTree, Vector LoadedNode)
+loadMapModel' Map{..} (TF.BoundGlTF {..}) = do
+  imageBuffers <- mapM loadImageBuffer boundImages
+  let samplers = fromMaybe V.empty $ TF.gltfSamplers boundGltf
+  textures <- mapM (loadTexture imageBuffers samplers) $ fromMaybe V.empty $ TF.gltfTextures boundGltf
+
+  let materials = V.imap (loadMaterial textures) $ fromMaybe V.empty $ TF.gltfMaterials boundGltf
+  prims <- mapM (loadChunk materials) $ lruChunks mapChunks
+  let
+    meshes = V.map (\x -> LoadedMesh{ lmeshPrimitives = V.singleton x}) prims
+    shifts = V.map chunkPosition $ lruChunks mapChunks
+    nodes' = V.map (\(x,y) -> LoadedNode{ lnodeTrs = trsFromShift y, lnodeMesh = Just x, lnodeSkin = Nothing }) $ V.zip meshes shifts
+    nodes = V.cons LoadedNode{ lnodeTrs = identity :: M44 Float, lnodeMesh = Nothing, lnodeSkin = Nothing } nodes'
+
+    trsFromShift :: V2 Int -> M44 Float
+    trsFromShift (V2 x y) = mkTransformation (Quaternion 1.0 (V3 0.0 0.0 0.0)) $ fromIntegral <$> V3 (chunkWidth*x) (chunkWidth*y) 0
+    trees = V.singleton $ LoadedNodeTree { lnodeIndex = 0, lnodeChildren = children }
+    children = V.generate (V.length nodes') (\x -> LoadedNodeTree { lnodeIndex = x, lnodeChildren = V.empty })
+
+  return (trees, nodes)
+
+
+loadMapModel :: forall m. MonadCube m => PipelineCache ShaderKey PipelineMeta -> Map -> TF.BoundGlTF -> m LoadedModel
+loadMapModel plCache mp bound = do
+  let initial = LoadState { currentBufferViews = IM.empty
+                          , currentAccessorsData = IM.empty
+                          , currentPreparedAccessors = IM.empty
+                          }
+      info = LoadInfo { infoPipelineCache = plCache
+                      , infoSourceBuffers = TF.boundBuffers bound
+                      , infoBufferViews = fromMaybe V.empty $ TF.gltfBufferViews $ TF.boundGltf bound
+                      , infoAccessors = fromMaybe V.empty $ TF.gltfAccessors $ TF.boundGltf bound
+                      }
+  (trees, nodes) <- flip runReaderT info $ flip evalStateT initial $ loadMapModel' mp bound
+
+  return LoadedModel { loadedTrees = trees
+                     , loadedNodes = nodes
+                     , loadedAnimations = HM.fromList []
                      }
