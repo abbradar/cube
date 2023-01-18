@@ -41,8 +41,6 @@ import Cube.Map
 import Data.WeakCache (WeakCache)
 import qualified Data.WeakCache as WeakCache
 
-import Debug.Trace
-
 type ModelId = Int
 
 data SceneGraphModel = SceneGraphModel { sgmModel :: LoadedModel
@@ -154,7 +152,7 @@ addChunksToScene sg mp (BoundMap {..}) = do
   model <- loadMapModel (sgShaderCache sg) mp bmapMaterials
   let graph = V.singleton $ SceneGraphNode{ sgnTrs = identity, sgnModel = Just
                                             ModelInstance{ instanceModel =
-                                                           SceneGraphModel{ sgmModel = traceShowId model, sgmName = "Map", sgmId = -1 }, instanceAnimationRef = Nothing }, sgnChildren = V.empty }
+                                                           SceneGraphModel{ sgmModel = model, sgmName = "Map", sgmId = -1 }, instanceAnimationRef = Nothing }, sgnChildren = V.empty }
   return $ sg { sgGraph = sgGraph sg <> graph }
 
 mapSceneM_ :: Monad m => (ModelInstance -> m ()) -> SceneGraph -> m ()

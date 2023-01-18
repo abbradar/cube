@@ -61,8 +61,8 @@ readMapFiles mapPath = do
   return (mapRandom, BoundMap { bmapMaterials = preloadedMaterials })
 
 
-readSceneFiles :: MonadCube m => FilePath -> m BoundScene
-readSceneFiles scenePath = do
+readSceneFiles :: MonadCube m => FilePath -> Vector SceneNode -> m BoundScene
+readSceneFiles scenePath sceneNodes = do
   Scene {..} <- liftIO (JSON.eitherDecodeFileStrict' scenePath) >>= either fail return
   let basePath = takeDirectory scenePath
       -- Canonicalizing them is important, because we make sure model files are the same when merging the scene graph later.
@@ -72,7 +72,7 @@ readSceneFiles scenePath = do
       initial = LoadState { currentPromises = HM.empty
                           }
 
-  let bsceneGraph = fromMaybe V.empty sceneGraph
+  let bsceneGraph = sceneNodes
   state' <- flip runReaderT info $ flip execStateT initial $ mapM_ readSceneNode bsceneGraph
   bscenePreloadedModels <- liftIO $ mapM wait $ currentPromises state'
   return $ BoundScene {..}

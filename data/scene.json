@@ -1,11 +1,5 @@
 {
   "models": {
     "player": "models/xyz.gltf"
-  },
-  "graph": [
-    {
-      "model": "player"
-    }
-  ]
+  }
 }
-
