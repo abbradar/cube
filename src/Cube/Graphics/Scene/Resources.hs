@@ -2,7 +2,9 @@
 
 module Cube.Graphics.Scene.Resources
   ( BoundScene(..)
+  , BoundMap(..)
   , readSceneFiles
+  , readMapFiles
   ) where
 
 import Data.Maybe
@@ -20,11 +22,14 @@ import System.FilePath
 import qualified Data.GlTF.Resources as TF
 import Cube.Types
 import Cube.Graphics.Scene.Types
+import Cube.Map
 
 data BoundScene = BoundScene { bsceneModelPaths :: HashMap ModelName FilePath
                              , bscenePreloadedModels :: HashMap ModelName TF.BoundGlTF
                              , bsceneGraph :: Vector SceneNode
                              }
+
+data BoundMap = BoundMap { bmapMaterials :: TF.BoundGlTF }
 
 newtype LoadState = LoadState { currentPromises :: HashMap ModelName (Async TF.BoundGlTF)
                               }
@@ -47,6 +52,14 @@ readSceneNode (SceneNode {..}) = do
           modelPromise <- liftIO $ async $ TF.readModel (modelPaths HM.! name)
           modify $ \x -> x { currentPromises = HM.insert name modelPromise $ currentPromises x }
   mapM_ readSceneNode $ fromMaybe V.empty sceneNodeChildren
+
+readMapFiles :: MonadCube m => FilePath -> m (MapRandom, BoundMap)
+readMapFiles mapPath = do
+  MapData {..} <- liftIO (JSON.eitherDecodeFileStrict' mapPath) >>= either fail return
+  materialPromise <- liftIO $ async $ TF.readModel mapPath
+  preloadedMaterials <- liftIO $ wait $ materialPromise
+  return (mapRandom, BoundMap { bmapMaterials = preloadedMaterials })
+
 
 readSceneFiles :: MonadCube m => FilePath -> m BoundScene
 readSceneFiles scenePath = do

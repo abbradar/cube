@@ -74,7 +74,7 @@ import Cube.Graphics.Types
 import Cube.Graphics.TRS
 import Cube.Graphics.ShadersCache
 import Cube.Map
---import Debug.Trace
+import Debug.Trace
 
 type AnimationName = Text
 type MaterialId = Int
@@ -84,6 +84,8 @@ data LoadedModel = LoadedModel { loadedTrees :: Vector LoadedNodeTree
                                , loadedNodes :: Vector LoadedNode
                                , loadedAnimations :: HashMap AnimationName (LoadedAnimation EmptySamplerState)
                                }
+instance Show LoadedModel where
+  show LoadedModel{..} = "tree: " ++ show loadedTrees ++ "\n animations: " ++ show (HM.keys loadedAnimations)
 
 
 data LoadedNodeTree = LoadedNodeTree { lnodeIndex :: TF.NodeIndex
@@ -99,9 +101,7 @@ instance Show LoadedNode where
   show LoadedNode{..} = "lnodeTrs: " ++ show lnodeTrs ++ " lnodeMesh: " ++ show lnodeMesh ++ " lnodeSkin: " ++ show lnodeSkin
 
 newtype LoadedMesh = LoadedMesh { lmeshPrimitives :: Vector LoadedPrimitive
-                                }
-instance Show LoadedMesh where
-  show LoadedMesh{..} = "primitives: " ++ show (length lmeshPrimitives)
+                                } deriving Show
 
 data LoadedSkin = LoadedSkin { lskinJoints :: Vector TF.NodeIndex
                              , lskinIBM :: VS.Vector M44F
@@ -118,6 +118,8 @@ data LoadedPrimitive = LoadedPrimitive { lprimDrawCommand :: DrawCommand
                                        , lprimPipeline :: LoadedPipeline
                                        , lprimMaterial :: LoadedMaterial
                                        }
+instance Show LoadedPrimitive
+  where show LoadedPrimitive{..} = "pipeline meta: " ++ show lprimPipelineMeta ++ ",\n pipeline: " ++ show lprimPipeline ++ ",\n material" ++ show lprimMaterial
 
 data LoadedMaterial = LoadedMaterial { lmatTextures :: HashMap TextureType (TF.AttributeSubIndex, Texture)
                                      , lmatBaseColorFactor :: V4F
@@ -127,6 +129,10 @@ data LoadedMaterial = LoadedMaterial { lmatTextures :: HashMap TextureType (TF.A
                                      , lmatAlphaCutoff :: Maybe Float
                                      , lmatId :: MaterialId
                                      }
+instance Show LoadedMaterial
+  where show LoadedMaterial{..} = "textures: " ++ show (HM.keys lmatTextures) ++ ",\n base color: " ++ show lmatBaseColorFactor ++ ",\n metallic factor: "
+          ++ show lmatMetallicFactor ++ ",\nroughness factor: " ++ show lmatRoughnessFactor ++ ",\n doublesided: " ++ show lmatDoubleSided
+          ++ ",\n alpha cutoff: " ++ show lmatAlphaCutoff ++ ",\n mat id: " ++ show lmatId
 
 data EmptySamplerState container component = EmptySamplerState
                                            deriving (Show, Eq, Ord)
@@ -616,9 +622,9 @@ loadPrimitive materials primitive@(TF.Primitive {..})
 
 loadChunk :: forall m. MonadCube m => Vector LoadedMaterial -> Chunk -> ModelT m LoadedPrimitive
 loadChunk materials chunk = do
-  let (vbuff, ibuff) = chunkBuffers chunk
+  let (vbuff, ibuff, chunkMaterial) = chunkBuffers chunk
       size = BS.length ibuff `div` (6*sizeOf (fromIntegral 0 :: Int16))
-      material = defaultMaterial
+      material = fromMaybe defaultMaterial $ materials V.!? chunkMaterial
       getTexCoord (attrIdx, _tex)
         | attrIdx >= 1 = Nothing
         | otherwise = Just attrIdx
@@ -632,7 +638,6 @@ loadChunk materials chunk = do
                             , shaderColorComponents = V.fromList []
                             , shaderTextures = HM.mapMaybe getTexCoord (lmatTextures material)
                             }
-      chunkAttributes = HM.fromList [(TF.ATPosition,0), (TF.ATNormal,1), (TF.ATTexCoord 0,2)]
 
   (meta, pl) <- getPipeline shaderKey
 
@@ -647,7 +652,7 @@ loadChunk materials chunk = do
                                     , integerMapping = False
                                     }
       -- TODO: replace 4 with sizeOf Float
-      sourcingNorm = defaultSourcing { offset = 6*size*(4)*3
+      sourcingNorm = defaultSourcing { offset = 4*size*(4)*3
                                      , components = 3
                                      , stride = 0
                                      , normalize = False
@@ -655,12 +660,12 @@ loadChunk materials chunk = do
                                      , attributeIndex = 1
                                      , integerMapping = False
                                      }
-      sourcingUV = defaultSourcing { offset = 12*size*(4)*3
+      sourcingUV = defaultSourcing { offset = 8*size*(4)*3
                                    , components = 2
                                    , stride = 0
                                    , normalize = False
                                    , sourceType = convertAccessorComponentType TF.CTFloat
-                                   , attributeIndex = 0
+                                   , attributeIndex = 2
                                    , integerMapping = False
                                    }
   vertexBuffer <- newBufferFromBS vbuff $ \x -> x { accessHints = (Static, Draw)
@@ -685,11 +690,10 @@ loadChunk materials chunk = do
 
 
   return $ LoadedPrimitive { lprimPipelineMeta = meta
-                                , lprimPipeline = pl
-                                , lprimMaterial = material
-                                , lprimDrawCommand = primDrawCommand
-                                }
-
+                           , lprimPipeline = pl
+                           , lprimMaterial = material
+                           , lprimDrawCommand = primDrawCommand
+                           }
 
 
 loadMesh :: MonadCube m => Vector LoadedMaterial -> TF.Mesh -> ModelT m (Maybe LoadedMesh)
@@ -858,12 +862,12 @@ loadMapModel' Map{..} (TF.BoundGlTF {..}) = do
     meshes = V.map (\x -> LoadedMesh{ lmeshPrimitives = V.singleton x}) prims
     shifts = V.map chunkPosition $ lruChunks mapChunks
     nodes' = V.map (\(x,y) -> LoadedNode{ lnodeTrs = trsFromShift y, lnodeMesh = Just x, lnodeSkin = Nothing }) $ V.zip meshes shifts
-    nodes = V.cons LoadedNode{ lnodeTrs = identity :: M44 Float, lnodeMesh = Nothing, lnodeSkin = Nothing } nodes'
+    nodes = traceShowId $ V.cons LoadedNode{ lnodeTrs = identity :: M44 Float, lnodeMesh = Nothing, lnodeSkin = Nothing } nodes'
 
     trsFromShift :: V2 Int -> M44 Float
     trsFromShift (V2 x y) = mkTransformation (Quaternion 1.0 (V3 0.0 0.0 0.0)) $ fromIntegral <$> V3 (chunkWidth*x) (chunkWidth*y) 0
     trees = V.singleton $ LoadedNodeTree { lnodeIndex = 0, lnodeChildren = children }
-    children = V.generate (V.length nodes') (\x -> LoadedNodeTree { lnodeIndex = x, lnodeChildren = V.empty })
+    children = V.generate (V.length nodes') (\x -> LoadedNodeTree { lnodeIndex = x+1, lnodeChildren = V.empty })
 
   return (trees, nodes)
 

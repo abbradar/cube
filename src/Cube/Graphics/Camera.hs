@@ -13,7 +13,7 @@ import Linear
 import Cube.Graphics.Geometry
 
 defaultUp :: Num a => V3 a
-defaultUp = V3 0 1 0
+defaultUp = V3 0 0 1
 
 data Camera a = Camera { cameraPosition :: V3 a
                        , cameraRotation :: Quaternion a

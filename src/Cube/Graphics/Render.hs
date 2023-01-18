@@ -36,7 +36,7 @@ import Cube.Graphics.ShadersCache
 import Cube.Graphics.Scene.Runtime
 import Data.GlTF.Types as TF (NodeIndex)
 
---import Debug.Trace
+import Debug.Trace
 
 data PreparedMesh = PreparedMesh { preparedModelMatrix :: M44F
                                  , preparedSkinning :: Maybe PreparedSkin

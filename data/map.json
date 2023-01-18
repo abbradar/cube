@@ -1,0 +1,12 @@
+{
+    "random" : {
+        "seed" : 1,
+        "octaves" : 1,
+        "scale" : 0.05,
+        "persistance" : 0.5,
+        "amplitude" : 8.0,
+        "lattice" : 4.0,
+        "shift" : 1024
+    },
+    "path" : "data/models/MapTextures.gltf"
+}

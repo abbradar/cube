@@ -34,6 +34,7 @@ library
       Cube.Loop.Reflex
       Cube.Loop.Stable
       Cube.Map
+      Cube.Player
       Cube.Time
       Cube.Types
       Cube.Utils
