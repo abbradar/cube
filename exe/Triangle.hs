@@ -26,13 +26,12 @@ import Cube.Graphics.Camera
 import Cube.Graphics.Render
 import Cube.Graphics.Scene.Resources
 import Cube.Graphics.Scene.Runtime
+import Cube.Graphics.Scene.Types
 import Cube.Input.Events
 import Cube.Input.Keyboard
 import Cube.Input.Mouse
 import Cube.Map
 import Cube.Player
-
-import Debug.Trace
 
 data GameSettings = GameSettings { gameVertexShader :: FilePath
                                  , gameFragmentShader :: FilePath
@@ -96,7 +95,14 @@ main = do
 
   runCube $ do
     let basePath = takeDirectory settingsPath
-    initialScenePromise <- liftIO $ async $ runCube $ readSceneFiles (basePath </> gameScene)
+        sceneNodes = V.singleton SceneNode { sceneNodeTranslation = Just gameInitialPosition
+                                           , sceneNodeRotation = Just gameInitialRotation
+                                           , sceneNodeScale = Just $ V3 1 1 1
+                                           , sceneNodeModel = Just "player"
+                                           , sceneNodeMatrix = Nothing
+                                           , sceneNodeChildren = Just V.empty
+                                           }
+    initialScenePromise <- liftIO $ async $ runCube $ readSceneFiles (basePath </> gameScene) sceneNodes
     initialMapPromise <- liftIO $ async $ runCube $ readMapFiles (basePath </> gameMap)
     vertexShaderPromise <- liftIO $ async $ runCube $ readAndPreprocessShader (basePath </> gameVertexShader)
     fragShaderPromise <- liftIO $ async $ runCube $ readAndPreprocessShader (basePath </> gameFragmentShader)
@@ -193,15 +199,15 @@ gameNetwork (GameWindow { gameSettings = GameSettings {..}, ..}) (GameInitialSta
         return $ Just $ fmap fromIntegral move ^/ ratio
   let normalizedMouseMoveStep = push normalizedShift mouseMoveStep
 
-  let updateCamera (mmove, mrotation) camera@(Camera {..}) = do
+  let updateCamera (mmove, mrotation) camera@(FloatingCamera {..}) = do
         let camera' =
               case mmove of
                 Nothing -> camera
-                Just step -> camera { cameraPosition = cameraPosition + 0.1 *^ (rotate cameraRotation step) }
+                Just step -> camera { fCameraTarget = fCameraTarget + 0.1 *^ (rotate fCameraRotation step) }
             camera'' =
               case mrotation of
                 Nothing -> camera'
-                Just shift -> cameraRotateNoRoll shift camera'
+                Just shift -> fCameraRotateNoRoll shift camera'
         return camera''
 
   let kbdCameraStep = fmap ((, Nothing) . Just) kbdMoveStep
@@ -209,9 +215,7 @@ gameNetwork (GameWindow { gameSettings = GameSettings {..}, ..}) (GameInitialSta
       cameraStep = mergeWith (\(moveA, rotateA) (moveB, rotateB) -> (moveA <|> moveB, rotateA <|> rotateB)) [kbdCameraStep, mouseCameraStep]
 
 
-  --playerTransform <- foldDynM updateTransform (sgnTrs $ sgGraph initialScene V.! 0) cameraStep
-  playerCamera <- foldDynM updateCamera (cameraFromEyeTarget (gameInitialPosition + gameCameraShift) gameInitialPosition ) cameraStep
-
+  playerCamera <- foldDynM updateCamera (fCameraLookAt (gameInitialPosition + gameCameraShift) gameInitialPosition ) cameraStep
   let screen = fmap (\(V2 width height) -> perspectiveScreen gameFovRadians (fromIntegral width / fromIntegral height) gameNearPlane gameFarPlane) windowSize
       scene = constant initialScene
       mp = constant initialMap

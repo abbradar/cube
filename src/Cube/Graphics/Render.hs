@@ -171,7 +171,7 @@ prepareSceneGraph sg = flip execStateT IM.empty $ mapSceneWithTRSM_ prepareScene
 
 drawPreparedNodesGeneric :: MonadCube m => Bool -> ScreenF -> CameraF -> PreparedNodes -> DrawT m ()
 drawPreparedNodesGeneric setFirstPipeline (Screen {..}) camera = foldM_ drawPipeline setFirstPipeline
-  where viewMatrix = cameraToMatrix camera
+  where viewMatrix = fCameraToMatrix camera
         viewProjectionMatrix = projectionMatrix !*! viewMatrix
         drawPipeline doSetPipeline (PreparedPipeline {..}) = do
           when doSetPipeline $ setPipeline $ loadedPipeline preparedPipeline
@@ -193,7 +193,7 @@ drawPreparedNodesGeneric setFirstPipeline (Screen {..}) camera = foldM_ drawPipe
                     else fail $ "Uniform length: " ++ show (VS.length values) ++ "is longer than the maximal supported: " ++ show size
 
           setPipelineUniform pipelineViewProjectionMatrix $ transpose viewProjectionMatrix
-          setPipelineUniform pipelineCamera $ cameraPosition camera
+          setPipelineUniform pipelineCamera $ fCameraPosition camera
 
 
           forM_ (HM.toList $ pipelineTextures preparedMeta) $ \(texType, idx) ->

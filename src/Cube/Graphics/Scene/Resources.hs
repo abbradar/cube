@@ -63,7 +63,7 @@ readMapFiles mapPath = do
 
 readSceneFiles :: MonadCube m => FilePath -> Vector SceneNode -> m BoundScene
 readSceneFiles scenePath sceneNodes = do
-  Scene {..} <- liftIO (JSON.eitherDecodeFileStrict' scenePath) >>= either fail return
+  SceneModels {..} <- liftIO (JSON.eitherDecodeFileStrict' scenePath) >>= either fail return
   let basePath = takeDirectory scenePath
       -- Canonicalizing them is important, because we make sure model files are the same when merging the scene graph later.
   bsceneModelPaths <- liftIO $ mapM (canonicalizePath . (basePath </>)) $ fromMaybe HM.empty sceneModels

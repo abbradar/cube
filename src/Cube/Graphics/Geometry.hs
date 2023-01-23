@@ -16,14 +16,14 @@ matrixToQuaternion (V3 (V3 m00 m01 m02)
           | m22 < 0 =
             if m00 > m11 then
               let t = 1 + m00 - m11 - m22
-              in (t, Quaternion t (V3 (m01 + m10) (m20 + m02) (m12 - m21)))
+              in (t, Quaternion (m12 - m21) (V3 t (m01 + m10) (m20 + m02)))
             else
               let t = 1 - m00 + m11 - m22
-              in (t, Quaternion (m01 + m10) (V3 t (m12 + m21) (m20 - m02)))
+              in (t, Quaternion (m20 - m02) (V3 (m01 + m10) t (m12 + m21) ))
           | otherwise =
             if m00 < -m11 then
               let t = 1 - m00 - m11 + m22
-              in (t, Quaternion (m20 + m02) (V3 (m12 + m21) t (m01 - m10)))
+              in (t, Quaternion (m01 - m10) (V3 (m20 + m02) (m12 + m21) t ))
             else
               let t = 1 + m00 + m11 + m22
-              in (t, Quaternion (m12 - m21) (V3 (m20 - m02) (m01 - m10) t))
+              in (t, Quaternion t (V3 (m12 - m21) (m20 - m02) (m01 - m10)))

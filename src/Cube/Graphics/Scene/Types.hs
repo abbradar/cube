@@ -3,7 +3,7 @@
 module Cube.Graphics.Scene.Types
   ( ModelName
   , SceneNode(..)
-  , Scene(..)
+  , SceneModels(..)
   ) where
 
 import GHC.Generics (Generic)
