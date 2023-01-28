@@ -203,24 +203,32 @@ gameNetwork (GameWindow { gameSettings = GameSettings {..}, ..}) (GameInitialSta
         let camera' =
               case mmove of
                 Nothing -> camera
-                Just step -> camera { fCameraTarget = fCameraTarget + 0.1 *^ (rotate fCameraRotation step) }
+                Just step -> camera { fCameraTarget = fCameraTarget + 0.1 *^ rotate fCameraRotation step }
             camera'' =
               case mrotation of
                 Nothing -> camera'
                 Just shift -> fCameraRotateNoRoll shift camera'
         return camera''
 
+  let updatePlayer (mmove, mrotation) pl@Player {..} = do
+        let pl' =
+              case mmove of
+                Nothing -> pl
+                Just step -> moveRotate pl (0.1 *^ rotate playerRotation step) (Quaternion 1.0 (V3 0.0 0.0 0.0)) initialMap
+        return pl'
   let kbdCameraStep = fmap ((, Nothing) . Just) kbdMoveStep
       mouseCameraStep = fmap ((Nothing, ) . Just) normalizedMouseMoveStep
       cameraStep = mergeWith (\(moveA, rotateA) (moveB, rotateB) -> (moveA <|> moveB, rotateA <|> rotateB)) [kbdCameraStep, mouseCameraStep]
 
 
   playerCamera <- foldDynM updateCamera (fCameraLookAt (gameInitialPosition + gameCameraShift) gameInitialPosition ) cameraStep
+  player <- foldDynM updatePlayer initialPlayer cameraStep
+
   let screen = fmap (\(V2 width height) -> perspectiveScreen gameFovRadians (fromIntegral width / fromIntegral height) gameNearPlane gameFarPlane) windowSize
       scene = constant initialScene
       mp = constant initialMap
-      player = constant initialPlayer
-      frameBehavior = GameState <$> current playerCamera <*> current screen <*> scene <*> player <*> mp
+     -- player = constant initialPlayer
+      frameBehavior = GameState <$> current playerCamera <*> current screen <*> scene <*> current player <*> mp
 
       network = EventLoopNetwork { eloopQuitEvent = quitEvent
                                  , eloopFrameBehavior = frameBehavior
