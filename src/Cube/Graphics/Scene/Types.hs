@@ -3,7 +3,7 @@
 module Cube.Graphics.Scene.Types
   ( ModelName
   , SceneNode(..)
-  , Scene(..)
+  , SceneModels(..)
   ) where
 
 import GHC.Generics (Generic)
@@ -35,10 +35,8 @@ data SceneNode = SceneNode { sceneNodeTranslation :: Maybe V3F
 instance FromJSON SceneNode where
   parseJSON = genericParseJSON $ sceneOptions "sceneNode"
 
-data Scene = Scene { sceneModels :: Maybe (HashMap ModelName FilePath)
-                   , sceneGraph :: Maybe (Vector SceneNode)
-                   }
+data SceneModels = SceneModels { sceneModels :: Maybe (HashMap ModelName FilePath) }
            deriving (Show, Generic)
 
-instance FromJSON Scene where
+instance FromJSON SceneModels where
   parseJSON = genericParseJSON $ sceneOptions "scene"

@@ -15,5 +15,5 @@ type M44F = M44 Float
 type QF = Quaternion Float
 
 type TRSF = TRS Float
-type CameraF = Camera Float
+type CameraF = FloatingCamera Float
 type ScreenF = Screen Float

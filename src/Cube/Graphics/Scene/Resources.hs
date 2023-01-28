@@ -2,7 +2,9 @@
 
 module Cube.Graphics.Scene.Resources
   ( BoundScene(..)
+  , BoundMap(..)
   , readSceneFiles
+  , readMapFiles
   ) where
 
 import Data.Maybe
@@ -20,11 +22,14 @@ import System.FilePath
 import qualified Data.GlTF.Resources as TF
 import Cube.Types
 import Cube.Graphics.Scene.Types
+import Cube.Map
 
 data BoundScene = BoundScene { bsceneModelPaths :: HashMap ModelName FilePath
                              , bscenePreloadedModels :: HashMap ModelName TF.BoundGlTF
                              , bsceneGraph :: Vector SceneNode
                              }
+
+data BoundMap = BoundMap { bmapMaterials :: TF.BoundGlTF }
 
 newtype LoadState = LoadState { currentPromises :: HashMap ModelName (Async TF.BoundGlTF)
                               }
@@ -48,9 +53,17 @@ readSceneNode (SceneNode {..}) = do
           modify $ \x -> x { currentPromises = HM.insert name modelPromise $ currentPromises x }
   mapM_ readSceneNode $ fromMaybe V.empty sceneNodeChildren
 
-readSceneFiles :: MonadCube m => FilePath -> m BoundScene
-readSceneFiles scenePath = do
-  Scene {..} <- liftIO (JSON.eitherDecodeFileStrict' scenePath) >>= either fail return
+readMapFiles :: MonadCube m => FilePath -> m (MapRandom, BoundMap)
+readMapFiles mapPath = do
+  MapData {..} <- liftIO (JSON.eitherDecodeFileStrict' mapPath) >>= either fail return
+  materialPromise <- liftIO $ async $ TF.readModel mapPath
+  preloadedMaterials <- liftIO $ wait $ materialPromise
+  return (mapRandom, BoundMap { bmapMaterials = preloadedMaterials })
+
+
+readSceneFiles :: MonadCube m => FilePath -> Vector SceneNode -> m BoundScene
+readSceneFiles scenePath sceneNodes = do
+  SceneModels {..} <- liftIO (JSON.eitherDecodeFileStrict' scenePath) >>= either fail return
   let basePath = takeDirectory scenePath
       -- Canonicalizing them is important, because we make sure model files are the same when merging the scene graph later.
   bsceneModelPaths <- liftIO $ mapM (canonicalizePath . (basePath </>)) $ fromMaybe HM.empty sceneModels
@@ -59,7 +72,7 @@ readSceneFiles scenePath = do
       initial = LoadState { currentPromises = HM.empty
                           }
 
-  let bsceneGraph = fromMaybe V.empty sceneGraph
+  let bsceneGraph = sceneNodes
   state' <- flip runReaderT info $ flip execStateT initial $ mapM_ readSceneNode bsceneGraph
   bscenePreloadedModels <- liftIO $ mapM wait $ currentPromises state'
   return $ BoundScene {..}

@@ -46,6 +46,8 @@ data LoadedPipeline = LoadedPipeline { loadedPipeline :: Pipeline
                                      , loadedAttributes :: HashMap AttributeName (AttributeLocation, AttributeInfo)
                                      , loadedUniforms :: HashMap UniformName (UniformLocation, UniformInfo)
                                      }
+instance Show LoadedPipeline
+  where show LoadedPipeline{..} = "attributes: " ++ show loadedAttributes ++ ",\n uniforms" ++ show loadedUniforms
 
 data PipelineCache key meta = PipelineCache { pipelineVertex :: ShaderWithIncludes
                                             , pipelineFragment :: ShaderWithIncludes

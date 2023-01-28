@@ -13,6 +13,7 @@ module Cube.Graphics.Render
   ) where
 
 import Data.IORef
+import Data.Maybe
 import Control.Monad
 import Data.IntMap.Strict (IntMap)
 import qualified Data.IntMap.Strict as IM
@@ -33,6 +34,9 @@ import Cube.Graphics.Camera
 import Cube.Graphics.Animation
 import Cube.Graphics.ShadersCache
 import Cube.Graphics.Scene.Runtime
+import Data.GlTF.Types as TF (NodeIndex)
+
+import Debug.Trace
 
 import Data.GlTF.Types as TF (NodeIndex)
 
@@ -51,7 +55,7 @@ instance Semigroup PreparedMesh where
 data PreparedSkin = PreparedSkin { preparedIBM :: VS.Vector M44F
                                  , preparedJoints :: VS.Vector M44F
                                  }
-                        deriving (Show, Eq)
+                    deriving (Show, Eq)
 
 data PreparedMaterialMeshes = PreparedMaterialMeshes { preparedTextures :: IntMap Texture
                                                      , preparedMaterial :: LoadedMaterial
@@ -150,9 +154,9 @@ prepareSceneGraphModel initialTrs (ModelInstance { instanceModel = SceneGraphMod
                                          }
 
                   where LoadedMaterial {..} = halfPreparedMaterial
-                        prepareSkin lskin = PreparedSkin{ preparedIBM = lskinIBM lskin
-                                                        , preparedJoints = VS.convert $ (updTrs V.!) <$> lskinJoints lskin
-                                                        }
+                        prepareSkin lskin = PreparedSkin { preparedIBM = lskinIBM lskin
+                                                         , preparedJoints = VS.convert $ (updTrs V.!) <$> lskinJoints lskin
+                                                         }
                         preparedMesh = PreparedMesh { preparedModelMatrix = updTrs V.! lnodeIndex tree'
                                                     , preparedSkinning = fmap prepareSkin (lnodeSkin node)
                                                     , preparedDrawCommands = halfPreparedCommands
@@ -171,7 +175,7 @@ prepareSceneGraph sg = flip execStateT IM.empty $ mapSceneWithTRSM_ prepareScene
 
 drawPreparedNodesGeneric :: MonadCube m => Bool -> ScreenF -> CameraF -> PreparedNodes -> DrawT m ()
 drawPreparedNodesGeneric setFirstPipeline (Screen {..}) camera = foldM_ drawPipeline setFirstPipeline
-  where viewMatrix = cameraToMatrix camera
+  where viewMatrix = fCameraToMatrix camera
         viewProjectionMatrix = projectionMatrix !*! viewMatrix
         drawPipeline doSetPipeline (PreparedPipeline {..}) = do
           when doSetPipeline $ setPipeline $ loadedPipeline preparedPipeline
@@ -184,15 +188,17 @@ drawPreparedNodesGeneric setFirstPipeline (Screen {..}) camera = foldM_ drawPipe
 
 
           -- TODO add uniform arrays to Caramia
-          let setPipelineUniformArray :: (MonadIO m, Uniformable a, VS.Storable a) => (PipelineMeta -> Maybe UniformLocation) -> VS.Vector a -> m ()
+          let setPipelineUniformArray :: (MonadFail m, MonadIO m, Uniformable a, VS.Storable a) => (PipelineMeta -> Maybe ArrayUniform) -> VS.Vector a -> m ()
               setPipelineUniformArray accessor values =
                 case accessor preparedMeta of
                   Nothing -> return ()
-                  Just idx -> VS.iforM_ values $ \x value -> setUniform value (idx+fromIntegral x) $ loadedPipeline preparedPipeline
-
+                  Just ArrayUniform{arrayIndex = idx, arraySize = size} ->
+                    if VS.length values <= size then VS.iforM_ values $ \x value -> setUniform value (idx+fromIntegral x) $ loadedPipeline preparedPipeline
+                    else fail $ "Uniform length: " ++ show (VS.length values) ++ "is longer than the maximal supported: " ++ show size
 
           setPipelineUniform pipelineViewProjectionMatrix $ transpose viewProjectionMatrix
-          setPipelineUniform pipelineCamera $ cameraPosition camera
+          setPipelineUniform pipelineCamera $ fCameraPosition camera
+
 
 
           forM_ (HM.toList $ pipelineTextures preparedMeta) $ \(texType, idx) ->
@@ -206,10 +212,11 @@ drawPreparedNodesGeneric setFirstPipeline (Screen {..}) camera = foldM_ drawPipe
             setFragmentPassTests preparedFragmentPassTests
 
             forM_ preparedMeshes $ \PreparedMesh {..} -> do
-              let joints = preparedJoints $ fromMaybe (error "prepared joint matrices are empty") preparedSkinning
-              setPipelineUniformArray pipelineBoneMatrices $ VS.map transpose joints
-              let offsets = preparedIBM $ fromMaybe (error "prepared offset matrices are empty") preparedSkinning
-              setPipelineUniformArray pipelineOffsetMatrices $ VS.map transpose offsets
+              forM_ preparedSkinning $ \skinning -> do
+                let joints = preparedJoints skinning
+                    offsets = preparedIBM skinning
+                setPipelineUniformArray pipelineBoneMatrices $ VS.map transpose joints
+                setPipelineUniformArray pipelineOffsetMatrices $ VS.map transpose offsets
               setPipelineUniform pipelineModelMatrix $ transpose preparedModelMatrix
               setPipelineUniform pipelineNormalMatrix $ transpose $ inv44 (viewMatrix !*! preparedModelMatrix)
               mapM_ drawR preparedDrawCommands

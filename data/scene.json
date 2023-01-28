@@ -1,11 +1,5 @@
 {
   "models": {
-    "cube": "models/cube_snake.gltf"
-  },
-  "graph": [
-    {
-      "model": "cube"
-    }
-  ]
+    "player": "models/xyz.gltf"
+  }
 }
-

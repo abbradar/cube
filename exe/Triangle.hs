@@ -9,6 +9,7 @@ import Control.Monad.IO.Class
 import Control.Monad.Logger
 import Graphics.Caramia as Caramia
 import Data.Functor.Misc
+import qualified Data.Vector as V
 import System.FilePath
 import Reflex
 import Reflex.Host.Class
@@ -25,14 +26,20 @@ import Cube.Graphics.Camera
 import Cube.Graphics.Render
 import Cube.Graphics.Scene.Resources
 import Cube.Graphics.Scene.Runtime
+import Cube.Graphics.Scene.Types
 import Cube.Input.Events
 import Cube.Input.Keyboard
 import Cube.Input.Mouse
+import Cube.Map
+import Cube.Player
 
 data GameSettings = GameSettings { gameVertexShader :: FilePath
                                  , gameFragmentShader :: FilePath
                                  , gameScene :: FilePath
-                                 , initialPosition :: V3 Float
+                                 , gameMap :: FilePath
+                                 , gameInitialPosition :: V3 Float
+                                 , gameInitialRotation :: Quaternion Float
+                                 , gameCameraShift :: V3 Float
                                  , gameInitialWidth :: Word
                                  , gameInitialHeight :: Word
                                  , gameNearPlane :: Float
@@ -56,9 +63,13 @@ data GameWindow = GameWindow { gameWindow :: SDL.Window
 data GameState = GameState { stateCamera :: CameraF
                            , stateScreen :: ScreenF
                            , stateScene :: SceneGraph
+                           , statePlayer :: Player
+                           , stateMap :: Map
                            }
 
 data GameInitialState = GameInitialState { initialScene :: SceneGraph
+                                         , initialPlayer :: Player
+                                         , initialMap :: Map
                                          }
 
 data GameExtra t = GameExtra { gameResizeHandle :: EventHandle t (V2 Int)
@@ -84,7 +95,15 @@ main = do
 
   runCube $ do
     let basePath = takeDirectory settingsPath
-    initialScenePromise <- liftIO $ async $ runCube $ readSceneFiles (basePath </> gameScene)
+        sceneNodes = V.singleton SceneNode { sceneNodeTranslation = Just gameInitialPosition
+                                           , sceneNodeRotation = Just gameInitialRotation
+                                           , sceneNodeScale = Just $ V3 1 1 1
+                                           , sceneNodeModel = Just "player"
+                                           , sceneNodeMatrix = Nothing
+                                           , sceneNodeChildren = Just V.empty
+                                           }
+    initialScenePromise <- liftIO $ async $ runCube $ readSceneFiles (basePath </> gameScene) sceneNodes
+    initialMapPromise <- liftIO $ async $ runCube $ readMapFiles (basePath </> gameMap)
     vertexShaderPromise <- liftIO $ async $ runCube $ readAndPreprocessShader (basePath </> gameVertexShader)
     fragShaderPromise <- liftIO $ async $ runCube $ readAndPreprocessShader (basePath </> gameFragmentShader)
 
@@ -109,9 +128,15 @@ main = do
                                                  , sceneFragmentShader = fragShader
                                                  }
       initialScene <- liftIO $ wait initialScenePromise
+      (mpRnd, sceneMap') <- liftIO $ wait initialMapPromise
       sceneGraph' <- addScene sceneGraph initialScene
+      let mp = mapFromRnd MapData{ mapRandom = mpRnd, mapPath =  gameMap } [V2 0 0]
+          iPlayer = Player { playerPos = gameInitialPosition, playerRotation = gameInitialRotation }
+      sceneGraph'' <- addChunksToScene sceneGraph' mp sceneMap'
 
-      let initialState = GameInitialState { initialScene = sceneGraph'
+      let initialState = GameInitialState { initialScene = sceneGraph''
+                                          , initialPlayer = iPlayer
+                                          , initialMap = mp
                                           }
           gameWindow = GameWindow { gameWindow = window
                                   , gameFovRadians = gameFov * pi / 180
@@ -173,29 +198,37 @@ gameNetwork (GameWindow { gameSettings = GameSettings {..}, ..}) (GameInitialSta
         let ratio = fromIntegral $ min sx sy
         return $ Just $ fmap fromIntegral move ^/ ratio
   let normalizedMouseMoveStep = push normalizedShift mouseMoveStep
-  
-  let updateCamera (mmove, mrotation) camera@(Camera {..}) = do
+
+  let updateCamera (mmove, mrotation) camera@(FloatingCamera {..}) = do
         let camera' =
               case mmove of
                 Nothing -> camera
-                Just step -> camera { cameraPosition = cameraPosition + 0.1 *^ (rotate cameraRotation step) }
+                Just step -> camera { fCameraTarget = fCameraTarget + 0.1 *^ rotate fCameraRotation step }
             camera'' =
               case mrotation of
                 Nothing -> camera'
-                Just shift -> cameraRotateNoRoll shift camera'
+                Just shift -> fCameraRotateNoRoll shift camera'
         return camera''
 
+  let updatePlayer (mmove, mrotation) pl@Player {..} = do
+        let pl' =
+              case mmove of
+                Nothing -> pl
+                Just step -> moveRotate pl (0.1 *^ rotate playerRotation step) (Quaternion 1.0 (V3 0.0 0.0 0.0)) initialMap
+        return pl'
   let kbdCameraStep = fmap ((, Nothing) . Just) kbdMoveStep
       mouseCameraStep = fmap ((Nothing, ) . Just) normalizedMouseMoveStep
       cameraStep = mergeWith (\(moveA, rotateA) (moveB, rotateB) -> (moveA <|> moveB, rotateA <|> rotateB)) [kbdCameraStep, mouseCameraStep]
 
-  -- playerCamera <- foldDynM updateCamera mempty cameraStep
-  playerCamera <- foldDynM updateCamera (Camera { cameraPosition = initialPosition, cameraRotation = Quaternion 1 0}) cameraStep
+
+  playerCamera <- foldDynM updateCamera (fCameraLookAt (gameInitialPosition + gameCameraShift) gameInitialPosition ) cameraStep
+  player <- foldDynM updatePlayer initialPlayer cameraStep
 
   let screen = fmap (\(V2 width height) -> perspectiveScreen gameFovRadians (fromIntegral width / fromIntegral height) gameNearPlane gameFarPlane) windowSize
       scene = constant initialScene
-
-      frameBehavior = GameState <$> current playerCamera <*> current screen <*> scene
+      mp = constant initialMap
+     -- player = constant initialPlayer
+      frameBehavior = GameState <$> current playerCamera <*> current screen <*> scene <*> current player <*> mp
 
       network = EventLoopNetwork { eloopQuitEvent = quitEvent
                                  , eloopFrameBehavior = frameBehavior

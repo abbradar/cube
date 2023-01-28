@@ -21,5 +21,5 @@ defaultNearPlane = 0.1
 defaultFarPlane :: Floating a => a
 defaultFarPlane = 1000.0
 
-perspectiveScreen :: Floating a => a -> a -> a -> a -> Screen a
+perspectiveScreen :: (Floating a, Show a) => a -> a -> a -> a -> Screen a
 perspectiveScreen fov ratio nplane fplane = Screen $ perspective fov ratio nplane fplane

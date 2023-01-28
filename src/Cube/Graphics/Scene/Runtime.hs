@@ -10,6 +10,7 @@ module Cube.Graphics.Scene.Runtime
   , SceneOptions(..)
   , newSceneGraph
   , addScene
+  , addChunksToScene
   , mapSceneM_
   , mapSceneWithTRSM_
   , advanceAnimations
@@ -36,6 +37,7 @@ import Cube.Graphics.ShadersCache
 import Cube.Graphics.Scene.Types
 import Cube.Graphics.Scene.Resources
 import Cube.Graphics.Model
+import Cube.Map
 import Data.WeakCache (WeakCache)
 import qualified Data.WeakCache as WeakCache
 
@@ -44,16 +46,18 @@ type ModelId = Int
 data SceneGraphModel = SceneGraphModel { sgmModel :: LoadedModel
                                        , sgmName :: ModelName
                                        , sgmId :: ModelId
-                                       }
+                                       } deriving Show
 
 data ModelInstance = ModelInstance { instanceModel :: SceneGraphModel
                                    , instanceAnimationRef :: Maybe (IORef AnimationState)
                                    }
+instance Show ModelInstance
+  where show ModelInstance{..} = show instanceModel
 
 data SceneGraphNode = SceneGraphNode { sgnTrs :: M44F
                                      , sgnModel :: Maybe ModelInstance
                                      , sgnChildren :: Vector SceneGraphNode
-                                     }
+                                     } deriving Show
 
 data SceneGraph = SceneGraph { sgModelPaths :: HashMap ModelName FilePath
                              , sgModelCache :: WeakCache ModelName SceneGraphModel
@@ -61,6 +65,9 @@ data SceneGraph = SceneGraph { sgModelPaths :: HashMap ModelName FilePath
                              , sgGraph :: Vector SceneGraphNode
                              , sgLastModelId :: Int
                              }
+instance Show SceneGraph
+  where show SceneGraph{..} = show sgGraph
+
 
 data SceneOptions = SceneOptions { sceneVertexShader :: ShaderWithIncludes
                                  , sceneFragmentShader :: ShaderWithIncludes
@@ -139,6 +146,14 @@ addScene sg (BoundScene {..}) = do
   return $ sg' { sgGraph = sgGraph sg' <> graph
                , sgLastModelId = stateLastModelId state'
                }
+
+addChunksToScene :: MonadCube m => SceneGraph -> Map -> BoundMap -> m SceneGraph
+addChunksToScene sg mp (BoundMap {..}) = do
+  model <- loadMapModel (sgShaderCache sg) mp bmapMaterials
+  let graph = V.singleton $ SceneGraphNode{ sgnTrs = identity, sgnModel = Just
+                                            ModelInstance{ instanceModel =
+                                                           SceneGraphModel{ sgmModel = model, sgmName = "Map", sgmId = -1 }, instanceAnimationRef = Nothing }, sgnChildren = V.empty }
+  return $ sg { sgGraph = sgGraph sg <> graph }
 
 mapSceneM_ :: Monad m => (ModelInstance -> m ()) -> SceneGraph -> m ()
 mapSceneM_ f graph = mapM_ go $ V.toList $ sgGraph graph
