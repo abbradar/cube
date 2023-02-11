@@ -620,10 +620,11 @@ loadPrimitive materials primitive@(TF.Primitive {..})
 
 
 
-loadChunk :: forall m. MonadCube m => Vector LoadedMaterial -> Chunk -> ModelT m LoadedPrimitive
-loadChunk materials chunk = do
-  let (vbuff, ibuff, chunkMaterial) = chunkBuffers chunk
-      size = BS.length ibuff `div` (6*sizeOf (fromIntegral 0 :: Int16))
+loadChunk :: forall m. MonadCube m => Vector LoadedMaterial -> Map -> V2 Int -> ModelT m LoadedPrimitive
+loadChunk materials mp chunkPos  = do
+  let fm x = fromMaybe (error $ "chunk with position" ++ show x ++ " is not loaded") (getChunk mp x)
+      (vbuff, ibuff, chunkMaterial) = chunkBuffers (fm chunkPos) (fm $ chunkPos + V2 (-1) 0) (fm $ chunkPos + V2 0 (-1))
+      size = BS.length ibuff `div` (6*sizeOf (0 :: Int16))
       material = fromMaybe defaultMaterial $ materials V.!? chunkMaterial
       getTexCoord (attrIdx, _tex)
         | attrIdx >= 1 = Nothing
@@ -851,13 +852,13 @@ loadModel plCache bound = do
                      }
 
 loadMapModel' :: forall m. MonadCube m => Map -> TF.BoundGlTF -> ModelT m (Vector LoadedNodeTree, Vector LoadedNode)
-loadMapModel' Map{..} (TF.BoundGlTF {..}) = do
+loadMapModel' mp@Map{..} (TF.BoundGlTF {..}) = do
   imageBuffers <- mapM loadImageBuffer boundImages
   let samplers = fromMaybe V.empty $ TF.gltfSamplers boundGltf
   textures <- mapM (loadTexture imageBuffers samplers) $ fromMaybe V.empty $ TF.gltfTextures boundGltf
 
   let materials = V.imap (loadMaterial textures) $ fromMaybe V.empty $ TF.gltfMaterials boundGltf
-  prims <- mapM (loadChunk materials) $ lruChunks mapChunks
+  prims <- mapM (loadChunk materials mp) $ getLoadedChunks mp
   let
     meshes = V.map (\x -> LoadedMesh{ lmeshPrimitives = V.singleton x}) prims
     shifts = V.map chunkPosition $ lruChunks mapChunks

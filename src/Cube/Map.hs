@@ -4,6 +4,8 @@ module Cube.Map
   ( Chunk(..)
   , Map(..)
   , ChunkLRU(..)
+  , getChunk
+  , getLoadedChunks
   , Movable(..)
   , chunkBuffers
   , chunkWidth
@@ -57,6 +59,12 @@ data Map = Map { mapChunks :: ChunkLRU
                , mapData :: MapData
                } deriving (Show, Eq, Read)
 
+getChunk :: Map -> V2 Int -> Maybe Chunk
+getChunk Map{..} pos = fmap (lruChunks mapChunks V.!) (M.lookup pos (lruMap mapChunks))
+
+getLoadedChunks :: Map -> V.Vector (V2 Int)
+getLoadedChunks Map{..} = V.fromList $ map fst $ M.toList $ lruMap mapChunks
+
 class Movable a where
   moveRotate :: a -> V3 Float -> Quaternion Float -> Map -> a
 
@@ -102,8 +110,8 @@ chunkSize = chunkWidth^2 * chunkHeight
 
 -- minecraft style chunk mesh
 --chunkBuffers :: Chunk ->
-chunkBuffers :: Chunk -> (B.ByteString, B.ByteString, Int)
-chunkBuffers chunk = (vbuffer, ibuffer, 0)
+chunkBuffers :: Chunk -> Chunk -> Chunk -> (B.ByteString, B.ByteString, Int)
+chunkBuffers chunk chunkX chunkY = (vbuffer, ibuffer, 0)
   where
     vbuffer = B.concat [pbuff, nbuff, uvbuff]
     pbuff = VSB.vectorToByteString $ VS.map faceToPos vFacesVect
@@ -111,17 +119,30 @@ chunkBuffers chunk = (vbuffer, ibuffer, 0)
     uvbuff = VSB.vectorToByteString $ VS.replicate (VS.length vFacesVect) uvs'
     ibuffer = VSB.vectorToByteString $ VS.imap faceToInds vFacesVect
 
-    --vFaces = VS.replicate (3*chunkSize) 0 VS.// fmap (\(V2 x y) -> (x, y)) vFacesList
     -- run over inner blocks
-    vFacesList = concatMap (\x -> visibleFaces (V3 1 1 1 + upck3' x (chunkWidth-1) (chunkHeight-1))) [0..(chunkWidth-1)^2*(chunkHeight-1)-1]
+    vFacesList' = concatMap (\x -> visibleFacesXYZ (V3 1 1 1 + upck3' x (chunkWidth-1) (chunkHeight-1)) [(chunk, V3 (-1) 0 0), (chunk, V3 0 (-1) 0), (chunk, V3 0 0 (-1))]) [0..(chunkWidth-1)^2*(chunkHeight-1)-1]
+    vFacesListX = concatMap (\x -> visibleFacesXYZ (V3 0 (1+mod x (chunkWidth-1)) (1+div x (chunkWidth-1))) [(chunkX, V3 15 0 0), (chunk, V3 0 (-1) 0), (chunk, V3 0 0 (-1))]) [0..(chunkWidth-1)*(chunkHeight-1)-1]
+    vFacesListY = concatMap (\x -> visibleFacesXYZ (V3 (1+mod x (chunkWidth-1)) 0 (1+div x (chunkWidth-1))) [(chunk, V3 (-1) 0 0), (chunkY, V3 0 15 0), (chunk, V3 0 0 (-1))]) [0..(chunkWidth-1)*(chunkHeight-1)-1]
+    vFacesListXY = concatMap (\x -> visibleFacesXYZ (V3 0 0 (1+x)) [(chunkX, V3 15 0 0), (chunkY, V3 0 15 0), (chunk, V3 0 0 (-1))]) [0..(chunkHeight-1)-1]
+    vFacesList = vFacesList' ++ vFacesListX ++ vFacesListY ++ vFacesListXY
     vFacesVect = VS.fromList vFacesList
-    visibleFaces :: V3 Int -> [V2 Int]
-    visibleFaces pos = lst
+    -- for every block check adjacent blocks and add a face if exactly one of them is transparent
+    visibleFacesXYZ pos chunksShifts = lst
+    --(chkX, shiftX) (chkY, shiftY) (chkZ, shiftZ) = lst'
       where
-        lst = if not $ isEmpty chunk pos then mapMaybe (\(x,n) -> if isEmpty chunk $ pos-x then Just (V2 (3*pck3 pos+n) 1) else Nothing) shifts
-                else mapMaybe (\(x,n) -> if not $ isEmpty chunk $ pos-x then Just (V2 (3*pck3 pos+n) (-1)) else Nothing) shifts
-        shifts = [(V3 1 0 0,0), (V3 0 1 0,1), (V3 0 0 1,2)]
+        xor True False = True
+        xor False True = True
+        xor _ _ = False
+        isEmp = isEmpty chunk pos
+        lst = mapMaybe (\((x,y),z) -> if xor isEmp (isEmpty x $ pos + y) then Just $ V2 (3*pck3 pos + z) (if isEmp then (-1) else 1) else Nothing) (zip chunksShifts [0,1,2])
+        --lst = (if xor (isEmp) (isEmpty chkX $ pos + shiftX) then [V2 (3*pck3 pos+0) (if isEmp then (-1) else 1)] else []) ++
+        --      (if xor (isEmp) (isEmpty chkY $ pos + shiftY) then [V2 (3*pck3 pos+1) (if isEmp then (-1) else 1)] else []) ++
+        --      (if xor (isEmp) (isEmpty chkZ $ pos + shiftZ) then [V2 (3*pck3 pos+2) (if isEmp then (-1) else 1)] else [])
+
+
+    -- normals corresponding to the three orientations of the face
     norms = V.fromList [V3 1.0 0.0 0.0, V3 0.0 1.0 0.0, V3 0.0 0.0 1.0]
+    -- generate vertices for a given face
     posShifts = V.fromList [V.fromList [V3 0.0 0.0 0.0, V3 0.0 1.0 0.0, V3 0.0 1.0 1.0, V3 0.0 0.0 1.0], V.fromList [V3 0.0 0.0 0.0, V3 1.0 0.0 0.0, V3 1.0 0.0 1.0, V3 0.0 0.0 1.0], V.fromList [V3 0.0 0.0 0.0, V3 1.0 0.0 0.0, V3 1.0 1.0 0.0, V3 0.0 1.0 0.0]]
     faceToPos :: V2 Int -> V4 (V3 Float)
     faceToPos (V2 iplus _) = V4 pos (pos + posShifts V.! i V.! 1)  (pos + posShifts V.! i V.! 2) (pos + posShifts V.! i V.! 3)
