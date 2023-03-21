@@ -130,7 +130,7 @@ main = do
       initialScene <- liftIO $ wait initialScenePromise
       (mpRnd, sceneMap') <- liftIO $ wait initialMapPromise
       sceneGraph' <- addScene sceneGraph initialScene
-      let mp = mapFromRnd MapData{ mapRandom = mpRnd, mapPath =  gameMap } [V2 0 0]
+      let mp = mapFromRnd MapData{ mapRandom = mpRnd, mapPath =  gameMap } [V2 0 0, V2 0 (-1), V2 (-1) (-1), V2 (-1) 0]
           iPlayer = Player { playerPos = gameInitialPosition, playerRotation = gameInitialRotation }
       sceneGraph'' <- addChunksToScene sceneGraph' mp sceneMap'
 

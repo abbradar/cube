@@ -50,6 +50,7 @@ data Chunk = Chunk { chunkBlocks :: VS.Vector BlockIdx
                    } deriving (Show, Eq, Read)
 
 data ChunkLRU = ChunkLRU { lruChunks :: V.Vector Chunk
+                         , lruLoadedChunks :: V.Vector (V2 Int)
                          , lruMap :: M.Map (V2 Int) Int
                          } deriving (Show, Eq, Read)
 
@@ -63,7 +64,7 @@ getChunk :: Map -> V2 Int -> Maybe Chunk
 getChunk Map{..} pos = fmap (lruChunks mapChunks V.!) (M.lookup pos (lruMap mapChunks))
 
 getLoadedChunks :: Map -> V.Vector (V2 Int)
-getLoadedChunks Map{..} = V.fromList $ map fst $ M.toList $ lruMap mapChunks
+getLoadedChunks Map{..} = lruLoadedChunks mapChunks
 
 class Movable a where
   moveRotate :: a -> V3 Float -> Quaternion Float -> Map -> a
@@ -233,4 +234,7 @@ mapFromRnd md lst = Map{ mapChunks = chunks, mapData = md }
   where
     chunksVector = V.fromList $ map (generateChunk $ mapRandom md) lst
     chunksMap = M.fromList $ zip lst [0..]
-    chunks = ChunkLRU{ lruChunks = chunksVector, lruMap = chunksMap }
+    loadedChunks = mapMaybe fltr lst
+    -- TODO clean up
+    fltr a = if isJust (chunksMap M.!? (a - V2 1 0)) && isJust (chunksMap M.!? (a - V2 0 1)) && isJust (chunksMap M.!? (a - V2 1 1)) then Just a else Nothing
+    chunks = ChunkLRU{ lruChunks = chunksVector, lruLoadedChunks = V.fromList loadedChunks, lruMap = chunksMap }
