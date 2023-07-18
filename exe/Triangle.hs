@@ -63,8 +63,7 @@ data GameWindow = GameWindow { gameWindow :: SDL.Window
                              , gameSettings :: GameSettings
                              }
 
-data GameState = GameState { stateCamera :: CameraF
-                           , stateScreen :: ScreenF
+data GameState = GameState { stateScreen :: ScreenF
                            , stateScene :: SceneGraph
                            , stateWorld :: World
                            , stateMap :: Map
@@ -135,11 +134,12 @@ main = do
       sceneGraph' <- addScene sceneGraph initialScene
       let mp = mapFromRnd MapData{ mapRandom = mpRnd, mapPath =  gameMap } [V2 0 0, V2 0 (-1), V2 (-1) (-1), V2 (-1) 0]
           playerTrs = undefined
-          iWorld = addEntity (HM.fromList [(0, Column {columnData = V.singleton $ Transform playerTrs}), (3, Column {columnData = V.singleton $ Player 0})]) (newWorld 0) --{ playerPos = gameInitialPosition, playerRotation = gameInitialRotation }
+          iWorld = addEntity (HM.fromList [(0, Column {columnData = V.singleton $ CTransform playerTrs}), (3, Column {columnData = V.singleton $ CPlayer 0})]) (newWorld 0) --{ playerPos = gameInitialPosition, playerRotation = gameInitialRotation }
+          iWorld' = addEntity (HM.fromList [(2, Column {columnData = V.singleton $ CCamera (fCameraLookAt (gameInitialPosition + gameCameraShift) gameInitialPosition)})]) iWorld
       sceneGraph'' <- addChunksToScene sceneGraph' mp sceneMap'
 
       let initialState = GameInitialState { initialScene = sceneGraph''
-                                          , initialWorld = iWorld
+                                          , initialWorld = iWorld'
                                           , initialMap = mp
                                           }
           gameWindow = GameWindow { gameWindow = window
@@ -179,7 +179,9 @@ drawGameFrame (GameWindow {..}) (GameState {..}) = do
   Caramia.clear clearing { clearDepth = Just 1.0
                          , clearColor = Just $ Caramia.rgba 0.4 0.4 0.4 1.0
                          } screenFramebuffer
-  runDrawPreparedNodes defaultDrawParams stateScreen stateCamera prepared
+  case V.head $ V.head $ getComponentByType (HS.fromList [2]) 2 stateWorld of
+    CCamera stateCamera -> runDrawPreparedNodes defaultDrawParams stateScreen stateCamera prepared
+    _ -> error "wrond index for camera"
   glSwapWindow gameWindow
   runPendingFinalizers
 
@@ -203,40 +205,53 @@ gameNetwork (GameWindow { gameSettings = GameSettings {..}, ..}) (GameInitialSta
         return $ Just $ fmap fromIntegral move ^/ ratio
   let normalizedMouseMoveStep = push normalizedShift mouseMoveStep
 
-  let updateCamera (mmove, mrotation) camera@(FloatingCamera {..}) = do
-        let camera' =
-              case mmove of
-                Nothing -> camera
-                Just step -> camera { fCameraTarget = fCameraTarget + 0.1 *^ rotate fCameraRotation step }
-            camera'' =
-              case mrotation of
-                Nothing -> camera'
-                Just shift -> fCameraRotateNoRoll shift camera'
-        return camera''
+--  let updateCamera (mmove, mrotation) camera@(FloatingCamera {..}) = do
+--        let camera' =
+--              case mmove of
+--                Nothing -> camera
+--                Just step -> camera { fCameraTarget = fCameraTarget + 0.1 *^ rotate fCameraRotation step }
+--            camera'' =
+--              case mrotation of
+--                Nothing -> camera'
+--                Just shift -> fCameraRotateNoRoll shift camera'
+--        return camera''
 
   let updatePlayer (mmove, mrotation) wrld = do
         let
           movePlayer :: V3 Float -> Component -> Component
-          movePlayer step (Transform trs) = Transform trs{ trsTranslation = trsTranslation trs + (0.1 *^ rotate (trsRotation trs) step) }
-          movePlayer _ _ = error "wrong component identifier"
+          movePlayer step (CTransform trs) = CTransform trs{ trsTranslation = trsTranslation trs + (0.1 *^ rotate (trsRotation trs) step) }
+          movePlayer _ _ = error "wrong player component identifier"
+
+          moveCamera :: V3 Float -> Component -> Component
+          moveCamera step (CCamera cam) = CCamera cam{ fCameraTarget = (fCameraTarget cam) + 0.1 *^ rotate (fCameraRotation cam) step }
+          moveCamera _ _ = error "wrong camera component identifier"
+
+          rotateCamera :: V2 Float -> Component -> Component
+          rotateCamera shift (CCamera cam) = CCamera $ fCameraRotateNoRoll shift cam
+          rotateCamera _ _ = error "wrong camera component identifier"
+
           wrld' =
               case mmove of
                 Nothing -> wrld
-                Just step -> updateComponentByType (HS.fromList [0,3]) 0 (movePlayer step) wrld--moveRotate pl (0.1 *^ rotate playerRotation step) (Quaternion 1.0 (V3 0.0 0.0 0.0)) initialMap
-        return wrld'
+                Just step -> updateComponentByType (HS.fromList [2]) 2 (moveCamera step) $ updateComponentByType (HS.fromList [0,3]) 0 (movePlayer step) wrld--moveRotate pl (0.1 *^ rotate playerRotation step) (Quaternion 1.0 (V3 0.0 0.0 0.0)) initialMap
+          wrld'' =
+            case mrotation of
+                Nothing -> wrld'
+                Just shift -> updateComponentByType (HS.fromList [2]) 2 (rotateCamera shift) wrld'
+        return wrld''
   let kbdCameraStep = fmap ((, Nothing) . Just) kbdMoveStep
       mouseCameraStep = fmap ((Nothing, ) . Just) normalizedMouseMoveStep
       cameraStep = mergeWith (\(moveA, rotateA) (moveB, rotateB) -> (moveA <|> moveB, rotateA <|> rotateB)) [kbdCameraStep, mouseCameraStep]
 
 
-  playerCamera <- foldDynM updateCamera (fCameraLookAt (gameInitialPosition + gameCameraShift) gameInitialPosition ) cameraStep
+  --playerCamera <- foldDynM updateCamera (fCameraLookAt (gameInitialPosition + gameCameraShift) gameInitialPosition ) cameraStep
   world <- foldDynM updatePlayer initialWorld cameraStep
 
   let screen = fmap (\(V2 width height) -> perspectiveScreen gameFovRadians (fromIntegral width / fromIntegral height) gameNearPlane gameFarPlane) windowSize
       scene = constant initialScene
       mp = constant initialMap
      -- player = constant initialPlayer
-      frameBehavior = GameState <$> current playerCamera <*> current screen <*> scene <*> current world <*> mp
+      frameBehavior = GameState <$> current screen <*> scene <*> current world <*> mp
 
       network = EventLoopNetwork { eloopQuitEvent = quitEvent
                                  , eloopFrameBehavior = frameBehavior

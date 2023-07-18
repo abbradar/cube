@@ -9,6 +9,7 @@ module Cube.ECS
   , removeEntity
   , nextEntity
   , updateComponentByType
+  , getComponentByType
   )
   where
 
@@ -24,7 +25,7 @@ import Linear
 newtype Entity = Entity Int
   deriving (Eq, Show, Num)
 
-data Component = Transform TRSF | Model B.ByteString | Camera CameraF | Player Int
+data Component = CTransform TRSF | CModel B.ByteString | CCamera CameraF | CPlayer Int
   deriving (Eq, Show)
 
 
@@ -112,3 +113,7 @@ updateComponentByType asign comp f wrld@World{..} = wrld{ worldAtypes = fmap run
   where
     runAtype :: Archetype -> Archetype
     runAtype at = if not $ HS.isSubsetOf asign $ aType at then at else at{ aColumns = HM.adjust (\Column{..} -> Column{ columnData = fmap f columnData }) comp (aColumns at) }
+
+
+getComponentByType :: HS.HashSet Int -> Int -> World -> V.Vector (V.Vector Component)
+getComponentByType asign comp wrld@World{..} = fmap (\x -> columnData $ (aColumns x) HM.! comp) $ V.filter (\x -> HS.isSubsetOf asign $ aType x) worldAtypes
