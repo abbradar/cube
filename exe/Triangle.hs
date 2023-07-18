@@ -9,6 +9,8 @@ import Control.Monad.IO.Class
 import Control.Monad.Logger
 import Graphics.Caramia as Caramia
 import Data.Functor.Misc
+import qualified Data.HashMap.Strict as HM
+import qualified Data.HashSet as HS
 import qualified Data.Vector as V
 import System.FilePath
 import Reflex
@@ -21,6 +23,7 @@ import Cube.Types
 import Cube.Time
 import Cube.Loop.Reflex
 import Cube.Graphics.Types
+import Cube.Graphics.TRS
 import Cube.Graphics.Screen
 import Cube.Graphics.Camera
 import Cube.Graphics.Render
@@ -31,7 +34,7 @@ import Cube.Input.Events
 import Cube.Input.Keyboard
 import Cube.Input.Mouse
 import Cube.Map
-import Cube.Player
+import Cube.ECS
 
 data GameSettings = GameSettings { gameVertexShader :: FilePath
                                  , gameFragmentShader :: FilePath
@@ -63,12 +66,12 @@ data GameWindow = GameWindow { gameWindow :: SDL.Window
 data GameState = GameState { stateCamera :: CameraF
                            , stateScreen :: ScreenF
                            , stateScene :: SceneGraph
-                           , statePlayer :: Player
+                           , stateWorld :: World
                            , stateMap :: Map
                            }
 
 data GameInitialState = GameInitialState { initialScene :: SceneGraph
-                                         , initialPlayer :: Player
+                                         , initialWorld :: World
                                          , initialMap :: Map
                                          }
 
@@ -131,11 +134,12 @@ main = do
       (mpRnd, sceneMap') <- liftIO $ wait initialMapPromise
       sceneGraph' <- addScene sceneGraph initialScene
       let mp = mapFromRnd MapData{ mapRandom = mpRnd, mapPath =  gameMap } [V2 0 0, V2 0 (-1), V2 (-1) (-1), V2 (-1) 0]
-          iPlayer = Player { playerPos = gameInitialPosition, playerRotation = gameInitialRotation }
+          playerTrs = undefined
+          iWorld = addEntity (HM.fromList [(0, Column {columnData = V.singleton $ Transform playerTrs}), (3, Column {columnData = V.singleton $ Player 0})]) (newWorld 0) --{ playerPos = gameInitialPosition, playerRotation = gameInitialRotation }
       sceneGraph'' <- addChunksToScene sceneGraph' mp sceneMap'
 
       let initialState = GameInitialState { initialScene = sceneGraph''
-                                          , initialPlayer = iPlayer
+                                          , initialWorld = iWorld
                                           , initialMap = mp
                                           }
           gameWindow = GameWindow { gameWindow = window
@@ -210,25 +214,29 @@ gameNetwork (GameWindow { gameSettings = GameSettings {..}, ..}) (GameInitialSta
                 Just shift -> fCameraRotateNoRoll shift camera'
         return camera''
 
-  let updatePlayer (mmove, mrotation) pl@Player {..} = do
-        let pl' =
+  let updatePlayer (mmove, mrotation) wrld = do
+        let
+          movePlayer :: V3 Float -> Component -> Component
+          movePlayer step (Transform trs) = Transform trs{ trsTranslation = trsTranslation trs + (0.1 *^ rotate (trsRotation trs) step) }
+          movePlayer _ _ = error "wrong component identifier"
+          wrld' =
               case mmove of
-                Nothing -> pl
-                Just step -> moveRotate pl (0.1 *^ rotate playerRotation step) (Quaternion 1.0 (V3 0.0 0.0 0.0)) initialMap
-        return pl'
+                Nothing -> wrld
+                Just step -> updateComponentByType (HS.fromList [0,3]) 0 (movePlayer step) wrld--moveRotate pl (0.1 *^ rotate playerRotation step) (Quaternion 1.0 (V3 0.0 0.0 0.0)) initialMap
+        return wrld'
   let kbdCameraStep = fmap ((, Nothing) . Just) kbdMoveStep
       mouseCameraStep = fmap ((Nothing, ) . Just) normalizedMouseMoveStep
       cameraStep = mergeWith (\(moveA, rotateA) (moveB, rotateB) -> (moveA <|> moveB, rotateA <|> rotateB)) [kbdCameraStep, mouseCameraStep]
 
 
   playerCamera <- foldDynM updateCamera (fCameraLookAt (gameInitialPosition + gameCameraShift) gameInitialPosition ) cameraStep
-  player <- foldDynM updatePlayer initialPlayer cameraStep
+  world <- foldDynM updatePlayer initialWorld cameraStep
 
   let screen = fmap (\(V2 width height) -> perspectiveScreen gameFovRadians (fromIntegral width / fromIntegral height) gameNearPlane gameFarPlane) windowSize
       scene = constant initialScene
       mp = constant initialMap
      -- player = constant initialPlayer
-      frameBehavior = GameState <$> current playerCamera <*> current screen <*> scene <*> current player <*> mp
+      frameBehavior = GameState <$> current playerCamera <*> current screen <*> scene <*> current world <*> mp
 
       network = EventLoopNetwork { eloopQuitEvent = quitEvent
                                  , eloopFrameBehavior = frameBehavior
