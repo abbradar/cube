@@ -1,5 +1,7 @@
 {
   "models": {
-    "player": "models/xyz.gltf"
+    "player": "models/Man4.gltf",
+    "zombie": "models/zombie1.gltf",
+    "xyz": "models/xyz.gltf"
   }
 }
