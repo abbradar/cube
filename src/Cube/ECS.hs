@@ -21,7 +21,7 @@ import Cube.Graphics.Types
 import Data.Maybe (fromJust)
 import Linear
 
--- contains id and size of each component type
+-- just an id for all entities in the game
 newtype Entity = Entity Int
   deriving (Eq, Show, Num)
 
@@ -35,7 +35,9 @@ data Column = Column { columnData :: V.Vector Component
   deriving (Eq, Show)
 
 -- rows specify which entities have this archetype
--- colomns specify the data of all the components indexed by rows, that is if aRows[i] = ent, then (columnData (aColumns comp))[i*(columnType (aColumns comp))] contains
+-- colomns specify the data of all the components indexed by rows,
+-- that is if aRows[i] = ent, then
+-- (columnData (aColumns comp))[i*(columnType (aColumns comp))] contains
 -- the data of the component comp of the entity ent
 data Archetype = Archetype { aColumns :: HM.HashMap Int Column
                            , aRows :: V.Vector Entity
@@ -71,7 +73,9 @@ atypeIsSingleton :: Archetype -> Bool
 atypeIsSingleton Archetype{..} = V.length aRows == 1
 
 data World = World { worldAtypes :: V.Vector Archetype
+                   -- entities with corresponding archetype keys
                    , worldEntities :: V.Vector (Entity, HS.HashSet Int)
+                   -- removed entities that can be reused
                    , worldFreeEntities :: V.Vector Entity
                    , worldId :: Int
                    }

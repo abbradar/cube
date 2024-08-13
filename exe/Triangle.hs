@@ -1,6 +1,5 @@
 {-# LANGUAGE StrictData #-}
 
-import GHC.Generics (Generic)
 import System.Environment
 import Data.Aeson as JSON
 import Control.Concurrent.Async
@@ -20,9 +19,10 @@ import SDL hiding (Event)
 import Data.Aeson.Utils
 import Data.GLSL.Preprocessor
 import Cube.Types
+import Cube.Game
 import Cube.Time
 import Cube.Loop.Reflex
-import Cube.Graphics.Types
+--import Cube.Graphics.Types
 import Cube.Graphics.TRS
 import Cube.Graphics.Screen
 import Cube.Graphics.Camera
@@ -36,43 +36,12 @@ import Cube.Input.Mouse
 import Cube.Map
 import Cube.ECS
 
-data GameSettings = GameSettings { gameVertexShader :: FilePath
-                                 , gameFragmentShader :: FilePath
-                                 , gameScene :: FilePath
-                                 , gameMap :: FilePath
-                                 , gameInitialPosition :: V3 Float
-                                 , gameInitialRotation :: Quaternion Float
-                                 , gameCameraShift :: V3 Float
-                                 , gameInitialWidth :: Word
-                                 , gameInitialHeight :: Word
-                                 , gameNearPlane :: Float
-                                 , gameFarPlane :: Float
-                                 , gameFov :: Float
-                                 , gameFrameRate :: Word
-                                 , gameWorldRate :: Word
-                                 }
-                  deriving (Show, Eq, Generic)
 
 instance FromJSON GameSettings where
   parseJSON = genericParseJSON $ defaultOptions { fieldLabelModifier = removePrefix "game"
                                                 }
 
 -- Immutable values for the whole duration of running.
-data GameWindow = GameWindow { gameWindow :: SDL.Window
-                             , gameFovRadians :: Float
-                             , gameSettings :: GameSettings
-                             }
-
-data GameState = GameState { stateScreen :: ScreenF
-                           , stateScene :: SceneGraph
-                           , stateWorld :: World
-                           , stateMap :: Map
-                           }
-
-data GameInitialState = GameInitialState { initialScene :: SceneGraph
-                                         , initialWorld :: World
-                                         , initialMap :: Map
-                                         }
 
 data GameExtra t = GameExtra { gameResizeHandle :: EventHandle t (V2 Int)
                              }
@@ -205,46 +174,11 @@ gameNetwork (GameWindow { gameSettings = GameSettings {..}, ..}) (GameInitialSta
         return $ Just $ fmap fromIntegral move ^/ ratio
   let normalizedMouseMoveStep = push normalizedShift mouseMoveStep
 
---  let updateCamera (mmove, mrotation) camera@(FloatingCamera {..}) = do
---        let camera' =
---              case mmove of
---                Nothing -> camera
---                Just step -> camera { fCameraTarget = fCameraTarget + 0.1 *^ rotate fCameraRotation step }
---            camera'' =
---              case mrotation of
---                Nothing -> camera'
---                Just shift -> fCameraRotateNoRoll shift camera'
---        return camera''
-
-  let updatePlayer (mmove, mrotation) wrld = do
-        let
-          movePlayer :: V3 Float -> Component -> Component
-          movePlayer step (CTransform trs) = CTransform trs{ trsTranslation = trsTranslation trs + (0.1 *^ rotate (trsRotation trs) step) }
-          movePlayer _ _ = error "wrong player component identifier"
-
-          moveCamera :: V3 Float -> Component -> Component
-          moveCamera step (CCamera cam) = CCamera cam{ fCameraTarget = (fCameraTarget cam) + 0.1 *^ rotate (fCameraRotation cam) step }
-          moveCamera _ _ = error "wrong camera component identifier"
-
-          rotateCamera :: V2 Float -> Component -> Component
-          rotateCamera shift (CCamera cam) = CCamera $ fCameraRotateNoRoll shift cam
-          rotateCamera _ _ = error "wrong camera component identifier"
-
-          wrld' =
-              case mmove of
-                Nothing -> wrld
-                Just step -> updateComponentByType (HS.fromList [2]) 2 (moveCamera step) $ updateComponentByType (HS.fromList [0,3]) 0 (movePlayer step) wrld--moveRotate pl (0.1 *^ rotate playerRotation step) (Quaternion 1.0 (V3 0.0 0.0 0.0)) initialMap
-          wrld'' =
-            case mrotation of
-                Nothing -> wrld'
-                Just shift -> updateComponentByType (HS.fromList [2]) 2 (rotateCamera shift) wrld'
-        return wrld''
   let kbdCameraStep = fmap ((, Nothing) . Just) kbdMoveStep
       mouseCameraStep = fmap ((Nothing, ) . Just) normalizedMouseMoveStep
       cameraStep = mergeWith (\(moveA, rotateA) (moveB, rotateB) -> (moveA <|> moveB, rotateA <|> rotateB)) [kbdCameraStep, mouseCameraStep]
 
 
-  --playerCamera <- foldDynM updateCamera (fCameraLookAt (gameInitialPosition + gameCameraShift) gameInitialPosition ) cameraStep
   world <- foldDynM updatePlayer initialWorld cameraStep
 
   let screen = fmap (\(V2 width height) -> perspectiveScreen gameFovRadians (fromIntegral width / fromIntegral height) gameNearPlane gameFarPlane) windowSize
