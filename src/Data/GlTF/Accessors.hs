@@ -41,6 +41,9 @@ import Linear.Matrix.Wrapper
 import Data.GlTF.Types
 import Data.GlTF.Resources
 
+-- kek
+import Unsafe.Coerce
+
 data AccessorContainer f a = ARScalar (f a)
                            | ARVec2 (f (V2 a))
                            | ARVec3 (f (V3 a))
@@ -101,7 +104,8 @@ type AccessorValueComponent = AccessorComponent (AccessorContainer Identity)
 data ConvertedAccessor a = ConvertedAccessor { convertedVector :: VS.Vector a
                                              , convertedMinMax :: AccessorMinMax a
                                              }
-                         deriving (Show, Eq, Ord, Coercible1)
+--                         deriving (Show, Eq, Ord, Coercible1)
+                           deriving (Show, Eq, Ord)
 
 instance StorableFunctor ConvertedAccessor where
   fmapStorable f (ConvertedAccessor {..}) = ConvertedAccessor { convertedVector = fmapStorable f convertedVector
@@ -175,7 +179,7 @@ packMatrixColumns accessorType compSize count bs
 
 newtype Converted g = Converted { unConverted :: forall f a. (ParseScientific a, ParseFromList f, VS.Storable (f a)) => Either String (g (f a)) }
 
-readAccessor' :: forall f. (Coercible1 f, StorableFunctor f) => Converted f -> Accessor -> Either String (AccessorComponent (AccessorContainer f))
+{- -readAccessor' :: forall f. (Coercible1 f, StorableFunctor f) => Converted f -> Accessor -> Either String (AccessorComponent (AccessorContainer f))
 readAccessor' converted (Accessor {..}) = do
   let accessorContainer :: forall a. (ParseScientific a, VS.Storable a) => Either String (AccessorContainer f a)
       {-# INLINE accessorContainer #-}
@@ -188,6 +192,31 @@ readAccessor' converted (Accessor {..}) = do
           ATMat2 -> ARMat2 <$> coerce1 <$> (unConverted converted :: Either String (f (WM22 a)))
           ATMat3 -> ARMat3 <$> coerce1 <$> (unConverted converted :: Either String (f (WM33 a)))
           ATMat4 -> ARMat4 <$> coerce1 <$> (unConverted converted :: Either String (f (WM44 a)))
+
+  case accessorComponentType of
+    CTByte -> ARByte <$> accessorContainer
+    CTUnsignedByte -> ARUByte <$> accessorContainer
+    CTShort -> ARShort <$> accessorContainer
+    CTUnsignedShort -> ARUShort <$> accessorContainer
+    CTUnsignedInt -> ARUInt <$> accessorContainer
+    CTFloat -> ARFloat <$> accessorContainer
+{-# INLINE readAccessor' #-} -}
+
+--kek
+
+readAccessor' :: forall f. (StorableFunctor f) => Converted f -> Accessor -> Either String (AccessorComponent (AccessorContainer f))
+readAccessor' converted (Accessor {..}) = do
+  let accessorContainer :: forall a. (ParseScientific a, VS.Storable a) => Either String (AccessorContainer f a)
+      {-# INLINE accessorContainer #-}
+      accessorContainer =
+        case accessorType of
+          ATScalar -> ARScalar <$> unsafeCoerce <$> (unConverted converted :: Either String (f (V1 a)))
+          ATVec2 -> ARVec2 <$> unConverted converted
+          ATVec3 -> ARVec3 <$> unConverted converted
+          ATVec4 -> ARVec4 <$> unConverted converted
+          ATMat2 -> ARMat2 <$> unsafeCoerce <$> (unConverted converted :: Either String (f (WM22 a)))
+          ATMat3 -> ARMat3 <$> unsafeCoerce <$> (unConverted converted :: Either String (f (WM33 a)))
+          ATMat4 -> ARMat4 <$> unsafeCoerce <$> (unConverted converted :: Either String (f (WM44 a)))
 
   case accessorComponentType of
     CTByte -> ARByte <$> accessorContainer
