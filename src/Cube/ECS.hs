@@ -13,37 +13,43 @@ module Cube.ECS
   )
   where
 
+import Control.Monad.State
+import Control.Monad
 import qualified Data.Vector as V
 import qualified Data.HashMap.Strict as HM
 import qualified Data.HashSet as HS
 import qualified Data.ByteString as B
-import Cube.Graphics.Types
-import Data.Maybe (fromJust)
+import Data.Maybe
 import Linear
 
+import Cube.Graphics.Model
+import Cube.Graphics.Types
+import Cube.Graphics.Assets
+import Cube.Types
+
 -- just an id for all entities in the game
-newtype Entity = Entity Int
   deriving (Eq, Show, Num)
 
-data Component = CTransform TRSF | CModel B.ByteString | CCamera CameraF | CPlayer Int
-  deriving (Eq, Show)
+
+data Component = CTransform TRSF | CModel FilePath | CCamera CameraF | CPlayer Int
+  deriving (Show)
 
 
 -- columns contain data of a particular component.
 data Column = Column { columnData :: V.Vector Component
                      }
-  deriving (Eq, Show)
+  deriving (Show)
 
 -- rows specify which entities have this archetype
 -- colomns specify the data of all the components indexed by rows,
 -- that is if aRows[i] = ent, then
--- (columnData (aColumns comp))[i*(columnType (aColumns comp))] contains
+-- (columnData (aColumns comp)) V.!! i contains
 -- the data of the component comp of the entity ent
 data Archetype = Archetype { aColumns :: HM.HashMap Int Column
                            , aRows :: V.Vector Entity
                            , aType :: HS.HashSet Int
                            }
-  deriving (Eq, Show)
+  deriving (Show)
 
 emptyAtype :: Archetype
 emptyAtype = Archetype{ aColumns = HM.empty, aRows = V.empty, aType = HS.empty }
@@ -79,7 +85,7 @@ data World = World { worldAtypes :: V.Vector Archetype
                    , worldFreeEntities :: V.Vector Entity
                    , worldId :: Int
                    }
-  deriving (Eq, Show)
+  deriving (Show)
 
 newWorld :: Int -> World
 newWorld n = World { worldAtypes = V.empty, worldEntities = V.empty, worldFreeEntities = V.singleton 0, worldId = n }
@@ -87,9 +93,13 @@ newWorld n = World { worldAtypes = V.empty, worldEntities = V.empty, worldFreeEn
 nextEntity :: World -> Entity
 nextEntity World{..} = V.last worldFreeEntities
 
-addEntity :: HM.HashMap Int Column -> World -> World
-addEntity mp wrld@World{..} = wrld{ worldAtypes = newAtypes, worldEntities = V.snoc worldEntities (ent, HM.keysSet mp), worldFreeEntities = wFE }
+addEntity :: MonadCube m => HM.HashMap Int Column -> World -> SceneT m World
+addEntity mp wrld@World{..} = do
+  SceneInfo{..} <- get
+  unless (isNothing $ HM.lookup 1 mp) $ modify updtScene
+  return $ wrld{ worldAtypes = newAtypes, worldEntities = V.snoc worldEntities (ent, HM.keysSet mp), worldFreeEntities = wFE }
   where
+    updtScene = undefined
     ent = V.last worldFreeEntities
     wFE = if V.length worldFreeEntities == 1 then V.singleton (ent+1) else V.init worldFreeEntities
     newAtypes = case entAtype of

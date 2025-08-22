@@ -23,19 +23,19 @@ import Cube.Game
 import Cube.Time
 import Cube.Loop.Reflex
 --import Cube.Graphics.Types
-import Cube.Graphics.TRS
+--import Cube.Graphics.TRS
 import Cube.Graphics.Screen
 import Cube.Graphics.Camera
 import Cube.Graphics.Render
 import Cube.Graphics.Scene.Resources
-import Cube.Graphics.Scene.Runtime
+--import Cube.Graphics.Scene.Runtime
+import Cube.Graphics.Assets
 import Cube.Graphics.Scene.Types
 import Cube.Input.Events
 import Cube.Input.Keyboard
 import Cube.Input.Mouse
 import Cube.Map
 import Cube.ECS
-
 
 instance FromJSON GameSettings where
   parseJSON = genericParseJSON $ defaultOptions { fieldLabelModifier = removePrefix "game"
@@ -95,7 +95,7 @@ main = do
     giveContext $ do
       Right vertexShader <- liftIO $ wait vertexShaderPromise
       Right fragShader <- liftIO $ wait fragShaderPromise
-      sceneGraph <- newSceneGraph $ SceneOptions { sceneVertexShader = vertexShader
+      sceneInfo <- newSceneInfo $ SceneOptions { sceneVertexShader = vertexShader
                                                  , sceneFragmentShader = fragShader
                                                  }
       initialScene <- liftIO $ wait initialScenePromise

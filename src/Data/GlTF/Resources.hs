@@ -20,7 +20,7 @@ import Data.Vector (Vector)
 import qualified Data.Vector as V
 import System.FilePath
 import qualified Data.Aeson as JSON
-import System.IO.Posix.MMap
+--import System.IO.Posix.MMap
 import Control.Monad.IO.Class
 import Codec.Picture (DynamicImage, decodeImage)
 import Codec.Picture.Jpg
@@ -42,7 +42,7 @@ readUri basePath uriStr =
   case decodeGltfUri uriStr of
     Left err -> fail [i|Error while decoding URI: #{err}|]
     Right (GlFileURI path) -> do
-      file <- unsafeMMapFile (basePath </> path)
+      file <- B.readFile (basePath </> path)
       let media =
             case map toLower $ snd $ splitExtension path of
               ".png" -> Just ("image", "png")
@@ -111,7 +111,7 @@ readModel path = do
   (boundGltf, intBuffer) <-
     case map toLower $ snd $ splitExtension path of
       ".glb" -> do
-        file <- liftIO $ unsafeMMapFile path
+        file <- liftIO $ B.readFile path
         rawAsset <-
           case decodeGlb file of
             Left err -> fail [i|Failed to decode GLB: #{err}|]

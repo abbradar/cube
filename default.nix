@@ -1,5 +1,5 @@
 { mkDerivation, aeson, async, attoparsec, attoparsec-binary, base
-, base64-bytestring, bytestring, bytestring-mmap
+, base64-bytestring, bytestring
 , bytestring-to-vector, caramia, containers, dependent-map
 , dependent-sum, dependent-sum-template, directory, exceptions
 , filepath, hashable, hpack, hsnoise, JuicyPixels, lens, lib
@@ -15,7 +15,7 @@ mkDerivation {
   isExecutable = true;
   libraryHaskellDepends = [
     aeson async attoparsec attoparsec-binary base base64-bytestring
-    bytestring bytestring-mmap bytestring-to-vector caramia containers
+    bytestring bytestring-to-vector caramia containers
     dependent-map dependent-sum dependent-sum-template directory
     exceptions filepath hashable hsnoise JuicyPixels lens linear
     monad-logger mtl ref-tf reflex scientific sdl2 storable-tuple
@@ -25,7 +25,7 @@ mkDerivation {
   libraryToolDepends = [ hpack ];
   executableHaskellDepends = [
     aeson async attoparsec attoparsec-binary base base64-bytestring
-    bytestring bytestring-mmap bytestring-to-vector caramia containers
+    bytestring bytestring-to-vector caramia containers
     dependent-map dependent-sum dependent-sum-template directory
     exceptions filepath hashable hsnoise JuicyPixels lens linear
     monad-logger mtl ref-tf reflex scientific sdl2 storable-tuple

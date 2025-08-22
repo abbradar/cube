@@ -1,6 +1,6 @@
 cabal-version: 1.12
 
--- This file has been generated from package.yaml by hpack version 0.34.7.
+-- This file has been generated from package.yaml by hpack version 0.35.2.
 --
 -- see: https://github.com/sol/hpack
 
@@ -17,7 +17,9 @@ library
       Cube.ECS
       Cube.Game
       Cube.Graphics.Animation
+      Cube.Graphics.Assets
       Cube.Graphics.Camera
+      Cube.Graphics.ECS
       Cube.Graphics.Framerate
       Cube.Graphics.Geometry
       Cube.Graphics.Model
@@ -109,7 +111,6 @@ library
     , base >=4.7
     , base64-bytestring
     , bytestring
-    , bytestring-mmap
     , caramia
     , containers
     , dependent-map
@@ -195,7 +196,6 @@ executable triangle
     , base >=4.7
     , base64-bytestring
     , bytestring
-    , bytestring-mmap
     , caramia
     , containers
     , cube
